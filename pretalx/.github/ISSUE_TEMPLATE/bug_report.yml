@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2022-present Tobias Kunze
+# SPDX-License-Identifier: CC-BY-SA-4.0
+
+name: Bug Report
+description: Create a report about incorrect or unhelpful behaviour.
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Please make sure to search our issues for similar bugs first! If bug has been reported already, react with a thumbs-up, and/or leave a comment providing further details.
+  - type: textarea
+    id: current
+    attributes:
+      label: Problem description
+      description: What problem you're running into? What impact does it have on your event? What steps are needed to reproduce the problem? Please include screenshots if applicable.
+      placeholder: When trying to do ____, pretalx suddenly shows me an error saying "...".
+  - type: input
+    id: link
+    attributes:
+      label: Link/URL
+  - type: input
+    id: technical_information
+    attributes:
+      label: Browser version, operating system
+  - type: input
+    id: version
+    attributes:
+      label: Pretalx version
+      description: The pretalx version in use. (Leave empty if unknown.)

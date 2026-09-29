@@ -1,0 +1,20 @@
+/*
+ * SPDX-FileCopyrightText: 2025-present Tobias Kunze
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.phase-option-row .row,
+.score-row .row {
+  margin-bottom: 8px;
+  .text-right input {
+    text-align: right;
+  }
+}
+#csswrap {
+  position: relative;
+  button {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+  }
+}

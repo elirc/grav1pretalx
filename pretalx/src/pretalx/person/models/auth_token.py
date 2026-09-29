@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2025-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+import string
+from functools import cached_property
+
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Q
+from django.utils.crypto import get_random_string
+from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy as _p
+
+from pretalx.api.versions import CURRENT_VERSIONS
+from pretalx.common.models.fields import DateTimeField
+from pretalx.common.models.mixins import PretalxModel
+
+
+def generate_api_token():
+    return get_random_string(
+        length=64, allowed_chars=string.ascii_lowercase + string.digits
+    )
+
+
+READ_PERMISSIONS = ("list", "retrieve")
+WRITE_ONLY_PERMISSIONS = ("create", "update", "destroy", "actions")
+WRITE_PERMISSIONS = (*READ_PERMISSIONS, *WRITE_ONLY_PERMISSIONS)
+PERMISSION_CHOICES = (
+    ("list", _p("API endpoint permissions", "Read list")),
+    ("retrieve", _p("API endpoint permissions", "Read details")),
+    ("create", _p("API endpoint permissions", "Create")),
+    ("update", _p("API endpoint permissions", "Update")),
+    ("destroy", _p("API endpoint permissions", "Delete")),
+    ("actions", _p("API endpoint permissions", "Additional actions")),
+)
+ENDPOINTS = (
+    "teams",
+    "events",
+    "submissions",
+    "speakers",
+    "reviews",
+    "feedback",
+    "rooms",
+    "questions",
+    "question-options",
+    "answers",
+    "tags",
+    "tracks",
+    "schedules",
+    "slots",
+    "submission-types",
+    "mail-templates",
+    "access-codes",
+    "speaker-information",
+)
+
+
+class UserApiTokenManager(models.Manager):
+    def active(self):
+        return self.get_queryset().filter(
+            Q(expires__isnull=True) | Q(expires__gt=now())
+        )
+
+
+class UserApiToken(PretalxModel):
+    name = models.CharField(max_length=190, verbose_name=_("Name"))
+    token = models.CharField(default=generate_api_token, max_length=64, unique=True)
+    user = models.ForeignKey(
+        to="person.User", related_name="api_tokens", on_delete=models.CASCADE
+    )
+    events = models.ManyToManyField(
+        to="event.Event", related_name="+", verbose_name=_("Events")
+    )
+    expires = DateTimeField(null=True, blank=True, verbose_name=_("Expiry date"))
+    endpoints = models.JSONField(default=dict, blank=True)
+    # Version is null until the token is first used for an API request, at which
+    # point get_api_version_from_request() sets it based on the request's
+    # pretalx-version header (or the current default version).
+    version = models.CharField(
+        max_length=12, null=True, blank=True, verbose_name=_("API version")
+    )
+    last_used = models.DateTimeField(null=True, blank=True)
+
+    objects = UserApiTokenManager()
+
+    def clean(self):
+        super().clean()
+        if not any(self.endpoints.values()):
+            raise ValidationError(_("Please select at least one endpoint permission."))
+
+    def has_endpoint_permission(self, endpoint, method):
+        if method == "partial_update":
+            # We don't track separate permissions for partial updates
+            method = "update"
+        elif method not in dict(PERMISSION_CHOICES):
+            method = "actions"
+        return method in self.endpoints.get(endpoint, [])
+
+    def has_any_write_permission(self):
+        write_actions = set(WRITE_ONLY_PERMISSIONS)
+        return any(
+            write_actions.intersection(actions) for actions in self.endpoints.values()
+        )
+
+    @property
+    def is_active(self):
+        return not self.expires or self.expires > now()
+
+    @property
+    def is_latest_version(self):
+        return not self.version or self.version in CURRENT_VERSIONS
+
+    def serialize(self):
+        return {
+            "name": self.name,
+            "token": self.token,
+            "events": [e.slug for e in self.events.all()],
+            "expires": self.expires.isoformat() if self.expires else None,
+            "endpoints": self.endpoints,
+            "version": self.version,
+        }
+
+    @cached_property
+    def permission_preset(self):
+        if not self.endpoints:
+            return "custom"
+        all_endpoints_have_read = all(
+            set(READ_PERMISSIONS) == set(self.endpoints.get(ep, [])) for ep in ENDPOINTS
+        )
+        if all_endpoints_have_read:
+            return "read"
+        all_endpoints_have_write = all(
+            set(WRITE_PERMISSIONS) == set(self.endpoints.get(ep, []))
+            for ep in ENDPOINTS
+        )
+        if all_endpoints_have_write:
+            return "write"
+        return "custom"
+
+    def get_endpoint_permissions_display(self):
+        result = []
+        for endpoint in ENDPOINTS:
+            permissions = self.endpoints.get(endpoint, [])
+            if permissions:
+                permission_labels = [
+                    str(label)
+                    for key, label in PERMISSION_CHOICES
+                    if key in permissions
+                ]
+                result.append((f"/{endpoint}", permission_labels))
+        return result

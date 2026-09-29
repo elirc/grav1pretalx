@@ -1,0 +1,28 @@
+<!--
+SPDX-FileCopyrightText: 2025-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/base.html" %}
+
+{% load render_table from django_tables2 %}
+
+{% block extra_title %}{{ generic_title }} :: {% endblock extra_title %}
+
+{% block content %}
+    <h2 class="d-flex">
+        {% block page_title %}{{ generic_title }}{% endblock page_title %}
+        {% if has_create_permission and create_url %}
+            <div class="ml-auto mb-3">
+                <a class="btn btn-success" href="{{ create_url }}">
+                    <i class="fa fa-plus"></i>
+                    {% block create_button_label %}{{ create_button_label }}{% endblock create_button_label %}
+                </a>
+                {% block title_actions %}{% endblock title_actions %}
+            </div>
+        {% endif %}
+    </h2>
+    {% block list_content %}
+        {% render_table table %}
+    {% endblock list_content %}
+{% endblock %}

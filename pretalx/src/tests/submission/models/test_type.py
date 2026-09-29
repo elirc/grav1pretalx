@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+import pytest
+
+from pretalx.submission.models import SubmitterAccessCode
+from pretalx.submission.models.type import SubmissionType, pleasing_number
+from tests.factories import (
+    EventFactory,
+    SubmissionTypeFactory,
+    SubmitterAccessCodeFactory,
+)
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    ((1.0, 1), (2.0, 2), (1.5, 1.5), (0.0, 0)),
+    ids=["one", "two", "fractional", "zero"],
+)
+def test_pleasing_number(value, expected):
+    assert pleasing_number(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("duration", "expected"),
+    (
+        (0, "Talk"),
+        (30, "Talk (30 minutes)"),
+        (60, "Talk (60 minutes)"),
+        (90, "Talk (90 minutes)"),
+        (100, "Talk (1 hour, 40 minutes)"),
+        (120, "Talk (2 hours)"),
+        (150, "Talk (2 hours, 30 minutes)"),
+        (60 * 24, "Talk (1 day)"),
+        (60 * 48, "Talk (2 days)"),
+        (60 * 36, "Talk (1.5 days)"),
+    ),
+)
+def test_submission_type_str(duration, expected):
+    result = str(SubmissionType(default_duration=duration, name="Talk"))
+    assert result == expected
+
+
+@pytest.mark.django_db
+def test_submission_type_log_parent_is_event():
+    st = SubmissionTypeFactory()
+    assert st.log_parent == st.event
+
+
+@pytest.mark.django_db
+def test_submission_type_log_prefix():
+    st = SubmissionTypeFactory()
+    assert st.log_prefix == "pretalx.submission_type"
+
+
+@pytest.mark.django_db
+def test_submission_type_slug():
+    st = SubmissionTypeFactory(name="Lightning Talk")
+    assert st.slug == f"{st.id}-lightning-talk"
+
+
+@pytest.mark.django_db
+def test_submission_type_delete_removes_single_type_access_codes():
+    event = EventFactory()
+    st = SubmissionTypeFactory(event=event)
+    access_code = SubmitterAccessCodeFactory(event=event)
+    access_code.submission_types.add(st)
+
+    st.delete()
+    assert not SubmitterAccessCode.objects.filter(pk=access_code.pk).exists()
+
+
+@pytest.mark.django_db
+def test_submission_type_delete_keeps_multi_type_access_codes():
+    event = EventFactory()
+    st1 = SubmissionTypeFactory(event=event)
+    st2 = SubmissionTypeFactory(event=event)
+    access_code = SubmitterAccessCodeFactory(event=event)
+    access_code.submission_types.add(st1, st2)
+
+    st1.delete()
+    assert SubmitterAccessCode.objects.filter(pk=access_code.pk).exists()

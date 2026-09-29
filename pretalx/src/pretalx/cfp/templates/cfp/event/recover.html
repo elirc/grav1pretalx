@@ -1,0 +1,30 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "cfp/event/base.html" %}
+
+{% load form_media %}
+{% load i18n %}
+
+{% block scripts %}{% form_media %}{% endblock scripts %}
+
+{% block title %}{{ phrases.base.password_reset_heading }}{% endblock title %}
+
+{% block content %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="col-md-8 labelless-password-input-form">
+            {% if is_invite_template %}
+                <h2>{% translate "Set your password to access your profile and proposals" %}</h2>
+                <p>{{ phrases.base.password_reset_nearly_done }}</p>
+            {% else %}
+                <h2>{{ phrases.base.password_reset_heading }}</h2>
+                <p>{{ phrases.base.password_reset_nearly_done }}</p>
+            {% endif %}
+            {{ form }}
+            <button type="submit" class="btn btn-block btn-success">{{ phrases.base.save }}</button>
+        </div>
+    </form>
+{% endblock content %}

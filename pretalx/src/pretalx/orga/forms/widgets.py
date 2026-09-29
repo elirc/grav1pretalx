@@ -1,0 +1,127 @@
+# SPDX-FileCopyrightText: 2018-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.conf import settings
+from django.forms import CheckboxSelectMultiple, RadioSelect
+from django.utils.translation import gettext_lazy as _
+
+from pretalx.common.forms.widgets import EnhancedSelect
+
+
+class PluginSelectWidget(CheckboxSelectMultiple):
+    template_name = "orga/widgets/plugin_select.html"
+    option_template_name = "orga/widgets/plugin_option.html"
+
+    def __init__(self, *args, plugins=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.plugins = {p.module: p for p in (plugins or [])}
+
+    class Media:
+        css = {"all": ["orga/css/ui/plugins.css"]}
+
+    def create_option(
+        self, name, value, label, selected, index, subindex=None, attrs=None
+    ):
+        opt = super().create_option(
+            name, value, label, selected, index, subindex, attrs
+        )
+        opt["plugin"] = self.plugins.get(value)
+        return opt
+
+
+class HeaderSelect(RadioSelect):
+    option_template_name = "orga/widgets/header_option.html"
+
+    class Media:
+        css = {
+            "all": [
+                "common/css/headers/pcb.css",
+                "common/css/headers/bubbles.css",
+                "common/css/headers/signal.css",
+                "common/css/headers/topo.css",
+                "common/css/headers/graph.css",
+                "orga/css/forms/header.css",
+            ]
+        }
+
+
+class MultipleLanguagesWidget(CheckboxSelectMultiple):
+    template_name = "orga/widgets/multi_languages_select.html"
+    option_template_name = "orga/widgets/multi_languages_widget.html"
+
+    def __init__(self, *args, **kwargs):
+        kwargs["attrs"] = kwargs.get("attrs", {})
+        kwargs["attrs"]["class"] = (
+            kwargs["attrs"].get("class", "") + " form-check form-check-languages"
+        )
+        super().__init__(*args, **kwargs)
+
+    def sort(self):
+        official_languages = [
+            choice
+            for choice in self.choices
+            if settings.LANGUAGES_INFORMATION[choice[0]].get("official")
+        ]
+        inofficial_languages = [
+            choice
+            for choice in self.choices
+            if not settings.LANGUAGES_INFORMATION[choice[0]].get("official")
+        ]
+        self.choices = (
+            ("", official_languages),
+            (
+                (
+                    _("Community translations"),
+                    _(
+                        "These translations are not maintained by the pretalx team. "
+                        "We cannot vouch for their correctness, and new or recently changed features "
+                        "might not be translated and will show in English instead. "
+                        'You can <a href="{url}" target="_blank">contribute to the translations</a>.'
+                    ),
+                    "fa fa-group",
+                ),
+                inofficial_languages,
+            ),
+        )
+
+    def options(self, name, value, attrs=None):
+        self.sort()
+        return super().options(name, value, attrs)
+
+    def optgroups(self, name, value, attrs=None):
+        self.sort()
+        return super().optgroups(name, value, attrs)
+
+    def create_option(
+        self, name, value, label, selected, index, subindex=None, attrs=None
+    ):
+        attrs["lang"] = value
+        opt = super().create_option(
+            name, value, label, selected, index, subindex, attrs
+        )
+        language = settings.LANGUAGES_INFORMATION[value]
+        opt["official"] = bool(language.get("official"))
+        opt["percentage"] = language["percentage"]
+        return opt
+
+
+class FontSelect(EnhancedSelect):
+    def __init__(self, attrs=None, choices=(), fonts=None, default_font=None):
+        super().__init__(attrs, choices)
+        self.fonts = fonts or {}
+        self.default_font = default_font
+
+    def create_option(
+        self, name, value, label, selected, index, subindex=None, attrs=None
+    ):
+        option = super().create_option(
+            name, value, label, selected, index, subindex, attrs
+        )
+        if value and value in self.fonts:
+            option["attrs"]["data-font-family"] = value
+            sample = self.fonts[value].get("sample", "")
+            if sample:
+                option["attrs"]["data-font-sample"] = sample
+        elif not value and self.default_font:
+            option["attrs"]["data-font-family"] = self.default_font
+        return option

@@ -1,0 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2018-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% include "django/forms/widgets/input.html" %}
+
+{% if widget.wrap_label %}
+    <label {% if widget.attrs.id %}for="{{ widget.attrs.id }}"{% endif %}>
+        {% if not widget.attrs.hide_label %}{{ widget.label }}{% endif %}
+    </label>
+{% endif %}

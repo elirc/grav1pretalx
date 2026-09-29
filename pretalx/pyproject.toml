@@ -1,0 +1,285 @@
+# SPDX-FileCopyrightText: 2023-present Tobias Kunze
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "pretalx"
+dynamic = ["version"]
+description = "Conference organisation: CfPs, scheduling, much more"
+readme = "README.rst"
+license = "AGPL-3.0-only"
+# SHOULD be the following, but Python does not support SPDX v3 (yet?)
+#license = "AGPL-3.0-only WITH AdditionRef-Pretalx-AGPL-3.0-Terms"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+keywords = ["conference", "event", "schedule", "talk", "cfp"]
+authors = [
+  {name = "Tobias Kunze", email = "r@rixx.de"},
+]
+maintainers = [
+  {name = "Tobias Kunze", email = "r@rixx.de"},
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Web Environment",
+  "Framework :: Django :: 6.0",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Other Audience",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+
+dependencies = [
+  "beautifulsoup4[lxml]~=4.14.0",
+  "bleach~=6.3.0",
+  "celery~=5.6.0",
+  "css_inline~=0.20.0",
+  "cssutils~=2.15.0",
+  "defusedcsv~=3.0.0",
+  "defusedxml~=0.7.0",
+  "diff-match-patch==20241021",
+  "Django[argon2]~=6.0.0",
+  "django-context-decorator",
+  "django-csp~=4.0.0",
+  "django-filter==25.2",
+  "django-formtools~=2.5.1",
+  "django-hierarkey~=2.0.1",
+  "django-i18nfield~=1.11.0",
+  "django-minify-html~=1.14.0",
+  "django-scopes~=2.0.0",
+  "django-tables2~=3.0.0",
+  "djangorestframework~=3.17.0",
+  "drf-flex-fields~=1.0.0",
+  "Markdown~=3.10.0",
+  "Pillow~=12.2.0",
+  "publicsuffixlist~=1.0.0",
+  "python-dateutil~=2.9.0",
+  "qrcode~=8.0",
+  "reportlab~=4.5.0",
+  "rules~=3.5.0",
+  "urllib3~=2.6",
+  "urlman~=2.0.1",
+  "vobject~=0.9.0",
+  "whitenoise[brotli]~=6.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build",
+  "check-manifest",
+  "coverage",
+  "django-watchfiles",
+  "djhtml",
+  "drf-spectacular",
+  "factory_boy",
+  "freezegun",
+  "jsonschema",
+  "polib",
+  "pytest",
+  "pytest-cov",
+  "pytest-django",
+  "pytest-mock",
+  "pytest-sugar",
+  "pytest-xdist",
+  "ruff",
+  "twine",
+]
+devdocs = [
+  "drf-spectacular",
+  "sphinx",
+  "sphinx-autobuild",
+  "sphinx-autodoc-typehints",
+  "sphinx-copybutton",
+  "sphinxcontrib-django",
+  "sphinxcontrib-httpdomain",
+  "sphinxcontrib-spelling",
+]
+postgres = ["psycopg2-binary~=2.9.0"]
+redis = ["redis~=7.4.0"]
+
+[build-system]
+build-backend = "backend"
+backend-path = ["_build"]
+requires = ["setuptools", "wheel"]
+
+[project.urls]
+Homepage = "https://pretalx.com"
+Documentation = "https://docs.pretalx.org"
+Repository = "https://github.com/pretalx/pretalx"
+Changelog = "https://docs.pretalx.org/changelog/"
+Issues = "https://github.com/pretalx/pretalx/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "pretalx.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pretalx*"]
+exclude = ["pretalx.frontend.node_modules*"]
+
+[tool.check-manifest]
+ignore = [
+  ".*",
+  "assets/*",
+  "CODE_OF_CONDUCT.md",
+  "CONTRIBUTORS",
+  "docs/*",
+  "src/local/*",
+  "src/tests",
+  "src/tests/*",
+  "SECURITY.md",
+  "tools/*",
+  # Build artifacts: shipped in the wheel via MANIFEST.in, but generated at
+  # build time (by pretalx._build) and never committed.
+  "src/pretalx/static/agenda/js/pretalx-schedule.min.js",
+  "src/pretalx/frontend/schedule-editor/dist",
+  "src/pretalx/frontend/schedule-editor/dist/*",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "pretalx.common.settings.test_settings"
+testpaths = "src/tests"
+pythonpath = "src"
+filterwarnings = [
+    # Turn all unfiltered warnings into errors (processed last due to insertion order)
+    "error",
+    # 2026-03: drf-spectacular 0.29.0 uses _UnionGenericAlias, deprecated in Python 3.17
+    "ignore:._UnionGenericAlias.:DeprecationWarning",
+    # Unclosed FieldFile handles during GC — per-test markers can't cover session/worker cleanup
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+addopts = "-p no:doctest -p no:pastebin -p no:nose"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "e2e: End-to-end tests",
+    "slow: Tests that are inherently slow (network timeouts, heavy DB setup). Skip with -m 'not slow'",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+  "*/__init__.py",
+  "*/__main__.py",
+  "*/_build.py",
+  "*/celery_app.py",
+  "*/legacy.py",
+  "*/legacy-tests/*",
+  "*/local/*",
+  "*/manage.py",
+  "*/management/commands/devserver.py",
+  "*/management/commands/makemessages.py",
+  "*/management/commands/rebuild.py",
+  "*/migrations/*",
+  "*/screenshots/*",
+  "*/settings*",
+  "*/shims.py",
+  "*/test_settings*",
+  "*/urls.py",
+  "*/wsgi.py",
+  "*/tests/services/test_documentation.py",
+]
+relative_files = true
+
+[tool.coverage.report]
+fail_under = 100
+exclude_also = [
+  "def __repr__",
+  "def __str__",
+  "if settings.DEBUG",
+  "NOQA",
+  "noqa",
+  "NotImplementedError",
+]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "ANN",     # We do not do annotations
+  "ARG",     # Unused method arguments are often ok
+  "C901",    # We do do complexity
+  "COM812",  # Trailing commas are formatter territory
+  "D",       # We do not enforce docstyles
+  "DJ001",   # We live in a state of sin
+  "E501",    # Long lines are formatter territory
+  "EM",      # Formatting strings is fine, actually
+  "FBT",     # Booleans are fine, actually
+  "FIX",     # TODO comments are fine, actually
+  "PLR",     # Refactoring: Too many branches, arguments, statements, etc
+  "RET502",  # Just returning is fine, actually
+  "RET503",  # Just not returning is fine, actually
+  "RUF012",  # Mutable default in class attribute is just how django rolls
+  "RUF100",  # Unused noqa; problematic when run in isolation
+  "TRY003",  # Error messages are fine, actually
+]
+allowed-confusables = ["–", "’", "×"]
+
+[tool.ruff.lint.per-file-ignores]
+"tools/**.py" = [
+  "E741",    # Ambiguous variable names are fine in scripts
+  "EXE001",  # Shebang without executable bit is fine for uv run scripts
+  "INP001",  # tools/ is a script collection, not a package
+  "PTH",     # os.path is fine in standalone scripts
+  "RUF015",  # next() vs [0] is a style nit
+  "T201",    # print() is the primary output mechanism in CLI tools
+]
+"src/tests/**.py" = [
+  "DTZ",     # TODO: do not use naive datetimes in tests
+  "RUF",     # Ignore ambiguous characters in tests, may be security tests
+  "S",       # Tests do not need cryptographic randomness and other security features
+  "S101",    # Ignore `assert` rules in tests
+  "SLF001",  # TODO: remove SLF001, fix private access
+  "TID253",  # Tests run on demand, not at every Django boot
+  "TRY",     # Exception handling is special in tests
+]
+"src/pretalx/**/management/commands/**.py" = ["TID253"]
+# The slow-leaf modules themselves: they ARE the wrappers around slow
+# third-party imports, so the import lives at module top here.
+"src/pretalx/agenda/html_export.py" = ["TID253"]
+"src/pretalx/submission/interfaces/cards.py" = ["TID253"]
+
+[tool.ruff.lint.flake8-pytest-style]
+parametrize-values-type = "tuple"
+
+[tool.ruff.lint.flake8-self]
+extend-ignore-names = ["_base_manager", "_default_manager",  "_meta"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Slow modules that must not be imported at module top.
+banned-module-level-imports = [
+  "PIL",
+  "bleach",
+  "bs4",
+  "cssutils",
+  "defusedxml",
+  "django.test",
+  "markdown",
+  "qrcode",
+  "qrcode.image.svg",
+  "reportlab",
+  "vobject",
+  "pretalx.agenda.html_export",
+  "pretalx.submission.interfaces.cards",
+]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = [
+  "allDay",
+  "api_urls",
+  "EventSettings",
+  "extendMarkdown",
+  "get_allDay",
+  "orga_urls",
+  "SendMailException",
+  "setUpTestData",
+  "urls",
+]

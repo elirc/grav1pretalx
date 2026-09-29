@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from rest_framework import viewsets
+
+from pretalx.api.documentation import (
+    build_expand_docs,
+    build_search_docs,
+    extend_schema,
+    extend_schema_view,
+)
+from pretalx.api.serializers.speaker_information import SpeakerInformationSerializer
+from pretalx.api.views.mixins import ActivityLogMixin, PretalxViewSetMixin
+from pretalx.person.models import SpeakerInformation
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List Speaker Information",
+        parameters=[
+            build_search_docs("title"),
+            build_expand_docs("limit_tracks", "limit_types"),
+        ],
+    ),
+    retrieve=extend_schema(
+        summary="Show Speaker Information",
+        parameters=[build_expand_docs("limit_tracks", "limit_types")],
+    ),
+    create=extend_schema(summary="Create Speaker Information"),
+    update=extend_schema(summary="Update Speaker Information"),
+    partial_update=extend_schema(summary="Update Speaker Information (Partial Update)"),
+    destroy=extend_schema(summary="Delete Speaker Information"),
+)
+class SpeakerInformationViewSet(
+    ActivityLogMixin, PretalxViewSetMixin, viewsets.ModelViewSet
+):
+    serializer_class = SpeakerInformationSerializer
+    queryset = SpeakerInformation.objects.none()
+    endpoint = "speaker-information"
+    search_fields = ("title",)
+    ordering_fields = ("id", "title")
+    ordering = ("id",)
+    permission_map = {"retrieve": "person.orga_view_speakerinformation"}
+
+    def get_queryset(self):
+        return (
+            self.event.information.all()
+            .select_related("event")
+            .prefetch_related("limit_tracks", "limit_types")
+            .order_by("pk")
+        )

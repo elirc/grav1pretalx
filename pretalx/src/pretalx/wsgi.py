@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+"""WSGI config for pretalx.
+
+Use with gunicorn or uwsgi.
+"""
+
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pretalx.settings")
+
+from django.core.wsgi import get_wsgi_application  # noqa: F401 -- WSGI entrypoint
+
+application = get_wsgi_application()

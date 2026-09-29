@@ -1,0 +1,114 @@
+/*
+ * SPDX-FileCopyrightText: 2025-present Tobias Kunze
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.dashboard-history {
+  max-height: none;
+
+  .list-group {
+    .list-group-item.logentry {
+      flex-direction: row;
+      display: grid;
+      grid-template-columns: [time] 180px [user] 180px [obj] 1fr [text] 1fr [button] 50px;
+      padding-left: 10px;
+      padding-right: 10px;
+      & > * {
+        padding: 0 10px;
+      }
+      .log-detail {
+        align-self: start;
+      }
+    }
+  }
+  &.submission-history .list-group .list-group-item.logentry {
+    grid-template-columns: [time] 180px [user] 180px [text] 1fr [button] 50px;
+  }
+}
+.logentry,
+.list-group .logentry.list-group-item {
+  display: flex;
+  flex-direction: column;
+  .time {
+    color: var(--color-text-muted);
+  }
+  span i.fa,
+  div i.fa {
+    padding-right: 6px;
+    color: var(--color-text-muted);
+  }
+}
+
+.form-history-container {
+  display: flex;
+  gap: 20px;
+  .form-container {
+    flex: 1;
+    min-width: 0;
+  }
+  .sidebar-container {
+    width: 220px;
+    flex-shrink: 0;
+    .card-title {
+      margin-bottom: 0;
+      font-size: 18px;
+    }
+    .log-detail {
+      display: inline-block;
+    }
+  }
+}
+
+.changes-container {
+  ins {
+    background-color: color-mix(in srgb, var(--color-success), transparent 55%);
+    text-decoration: none;
+    border-radius: 2px;
+  }
+
+  del {
+    background-color: color-mix(in srgb, var(--color-danger), transparent 75%);
+    text-decoration: line-through;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+
+  td {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  tr div[lang] {
+    background-repeat: no-repeat;
+    padding-left: 24px;
+    background-position: top 8px left;
+  }
+  tr p,
+  tr ul {
+    margin-top: 0;
+  }
+}
+
+dialog#dialog-history-details {
+  min-width: min(550px, 80vw);
+}
+
+@media (max-width: 768px) {
+  .form-history-container {
+    flex-direction: column;
+    .sidebar-container {
+      width: 100%;
+    }
+  }
+  .dashboard-history .list-group .logentry {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--color-grey-light);
+    padding-top: 16px;
+    .meta {
+      flex-direction: column;
+      .time {
+        padding-bottom: 16px;
+      }
+    }
+  }
+}

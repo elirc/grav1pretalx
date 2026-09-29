@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2022-present Tobias Kunze
+# SPDX-License-Identifier: CC-BY-SA-4.0
+
+name: Feature idea
+description: Suggest a new pretalx feature.
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: Please make sure to search our issues for similar feature requests first! If the requests exists already, react with a thumbs-up on the issue to indicate your interest. If a similar issue exists, either leave a comment there or link the issue here.
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed feature
+      description: How would pretalx behave in an ideal world? What would make your life easier?
+      placeholder: Ideally, I could do ____ directly from page ____, with helpful suggestions drawing from my recent search.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem, context, alternative solutions
+      description: What problem are you running into? What impact does it have on you / your event? Screenshots and context help a lot in understanding how to approach a new feature. If you have alternative solutions in mind, please share them too!
+      placeholder: "When trying to do ____, users have to go through three separate pages: …, which they usually do not do. As an alternative to my suggested solution, we could also …"

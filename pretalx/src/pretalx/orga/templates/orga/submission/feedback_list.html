@@ -1,0 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/submission/base.html" %}
+
+{% load i18n %}
+{% load render_table from django_tables2 %}
+
+{% block submission_title %}{% translate "Attendee feedback" %} :: {% endblock submission_title %}
+
+{% block submission_content %}
+    {% render_table table %}
+{% endblock submission_content %}

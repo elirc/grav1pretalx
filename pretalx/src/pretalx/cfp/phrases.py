@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
+
+from pretalx.common.text.phrases import Phrases
+
+
+class CfPPhrases(Phrases, app="cfp"):
+    auth_password_reset = _(
+        "If we know a user by this email address (who has not requested a password reset in the last 24 hours), we will send you an email containing further instructions. If you don’t "
+        "see the email within the next minutes, check your spam inbox!"
+    )
+    auth_reset_fail = _(
+        "This link was not valid. Make sure you copied the complete URL from the "
+        "email and that the email is no more than 24 hours old."
+    )
+    auth_reset_success = _("Awesome! You can now log in using your new password.")
+
+    submission_withdrawn = _("Your proposal has been withdrawn.")
+    submission_not_withdrawn = _(
+        "Your proposal can’t be withdrawn at this time – please contact us if you need to withdraw your proposal!"
+    )
+    submission_confirmed = _(
+        "Your session has been confirmed – we’re looking forward to seeing you!"
+    )
+    submission_was_confirmed = _(
+        "This proposal has already been confirmed – we’re looking forward to seeing you!"
+    )
+    submission_not_confirmed = _(
+        "This proposal cannot be confirmed at this time – please contact us if you think this is an error."
+    )
+    submission_uneditable = _(
+        "This proposal cannot be edited at this time. Please contact the organisers if you need to make changes."
+    )
+
+    speaker_email = pgettext_lazy("field: speaker's email address", "Speaker email")
+    invite_subject = _("{inviting_speaker} invites you to join their session!")
+    invite_text = _("""Hi!
+
+I’d like to invite you to be a speaker in the session
+
+  “{proposal_title}”
+
+at {event_name}. Please follow this link to join:
+
+  {url}
+
+I’m looking forward to it!
+{inviting_speaker}""")
+    invite_invalid_email = _("Please provide a valid email address.")
+    invite_sent = _("The invitation has been sent.")
+    invite_accepted = _(
+        "You are now part of this proposal! Please fill in your profile below."
+    )
+
+    submission_email_fail = _(
+        "We are experiencing difficulties when sending emails, but your session was submitted successfully!"
+    )
+
+    custom_fields = _("Custom fields")

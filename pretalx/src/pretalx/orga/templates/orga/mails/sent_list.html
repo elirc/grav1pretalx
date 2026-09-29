@@ -1,0 +1,23 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/mails/base.html" %}
+
+{% load i18n %}
+{% load render_table from django_tables2 %}
+
+{% block mail_content %}
+    <h2>
+        {{ page_obj.paginator.count }}
+        {% translate "Sent emails" %}
+    </h2>
+    {% include "common/includes/search_form.html" %}
+    {% if sending_ids %}
+        <div hx-get="{% url 'orga:mails.sending_status' event=request.event.slug %}?ids={{ sending_ids }}"
+             hx-trigger="every 3s" hx-swap="innerHTML"></div>
+    {% endif %}
+    {% render_table table %}
+
+{% endblock mail_content %}

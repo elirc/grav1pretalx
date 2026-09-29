@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2018-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.db.models.deletion import ProtectedError
+from rest_framework import exceptions, pagination, viewsets
+from rest_framework.permissions import SAFE_METHODS
+
+from pretalx.api.documentation import (
+    build_search_docs,
+    extend_schema,
+    extend_schema_view,
+)
+from pretalx.api.serializers.room import RoomOrgaSerializer, RoomSerializer
+from pretalx.api.views.mixins import ActivityLogMixin, PretalxViewSetMixin
+from pretalx.schedule.domain.room import delete_room
+from pretalx.schedule.models import Room
+
+
+class RoomPagination(pagination.LimitOffsetPagination):
+    default_limit = 100
+
+
+@extend_schema_view(
+    list=extend_schema(summary="List Rooms", parameters=[build_search_docs("name")]),
+    retrieve=extend_schema(summary="Show Rooms"),
+    create=extend_schema(
+        summary="Create Rooms",
+        request=RoomOrgaSerializer,
+        responses={201: RoomOrgaSerializer},
+    ),
+    update=extend_schema(
+        summary="Update Rooms",
+        request=RoomOrgaSerializer,
+        responses={200: RoomOrgaSerializer},
+    ),
+    partial_update=extend_schema(
+        summary="Update Rooms (Partial Update)",
+        request=RoomOrgaSerializer,
+        responses={200: RoomOrgaSerializer},
+    ),
+    destroy=extend_schema(summary="Delete Rooms"),
+)
+class RoomViewSet(ActivityLogMixin, PretalxViewSetMixin, viewsets.ModelViewSet):
+    queryset = Room.objects.none()
+    serializer_class = RoomSerializer
+    pagination_class = RoomPagination
+    endpoint = "rooms"
+    search_fields = ("name",)
+    ordering_fields = ("id", "name", "position", "capacity")
+    ordering = ("position", "id")
+
+    def get_queryset(self):
+        qs = self.event.rooms.all().select_related("event")
+        if self.has_perm("update"):
+            qs = qs.prefetch_related("availabilities")
+        return qs
+
+    def get_unversioned_serializer_class(self):
+        if self.request.method not in SAFE_METHODS or self.has_perm("update"):
+            return RoomOrgaSerializer
+        return RoomSerializer
+
+    def perform_destroy(self, instance):
+        try:
+            delete_room(instance)
+        except ProtectedError:
+            raise exceptions.ValidationError(
+                "You cannot delete a room that has been used in the schedule."
+            ) from None

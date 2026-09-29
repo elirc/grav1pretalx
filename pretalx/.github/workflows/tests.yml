@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2020-present Tobias Kunze
+# SPDX-License-Identifier: Apache-2.0
+
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'doc/**'
+      - 'src/pretalx/locale/**'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - 'doc/**'
+      - 'src/pretalx/locale/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: 1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.13, 3.14]
+        database: [sqlite, postgres]
+        # We run tests on all Postgres x Python versions and on one version for sqlite.
+        # We build coverage information on the latest Python version only
+        exclude:
+          - database: sqlite
+            python-version: '3.13'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pretalx
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pretalx"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: extractions/setup-just@v4
+      - name: Set up node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+      - name: Install system dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list
+          sudo apt clean
+          sudo apt update
+          sudo apt install -y gettext
+      - name: Install Python dependencies
+        run: just install --extra dev && uv pip install Faker
+        if: matrix.database != 'postgres'
+      - name: Install Python dependencies
+        run: just install --extra dev --extra postgres && uv pip install Faker
+        if: matrix.database == 'postgres'
+      - name: Install frontend dependencies
+        run: just install-npm
+      - name: Run checks
+        run: just run check --deploy
+      - name: Compile messages
+        run: just run compilemessages
+      - name: Run tests
+        run: just test-coverage -n auto -p no:sugar
+        env:
+          PRETALX_CONFIG_FILE: 'src/tests/ci_${{ matrix.database }}.cfg'
+      - name: Coverage comment
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: "90"
+          MINIMUM_ORANGE: "80"
+          ANNOTATE_MISSING_LINES: true
+        if: always() && matrix.database == 'postgres' && matrix.python-version == '3.14'
+      - name: Store Pull Request comment to be posted
+        uses: actions/upload-artifact@v7
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt

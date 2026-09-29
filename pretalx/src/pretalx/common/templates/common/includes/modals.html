@@ -1,0 +1,18 @@
+<!--
+SPDX-FileCopyrightText: 2025-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% load i18n %}
+
+<dialog id="lightbox-dialog" role="alertdialog" aria-labelledby="lightbox-label" closedby="any">
+    <form method="dialog" class="modal-card">
+        <div class="modal-card-content">
+            <figure class="text-center text-muted">
+                <img />
+                <figcaption id="lightbox-label"></figcaption>
+            </figure>
+            <button class="dialog-close btn btn-outline-primary btn-xs" aria-label="{% translate "Close" %}"><i class="fa fa-times"></i></button>
+        </div>
+    </form>
+</dialog>

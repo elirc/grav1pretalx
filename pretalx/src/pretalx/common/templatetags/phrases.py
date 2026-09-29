@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2024-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django import template
+from django.utils.safestring import mark_safe
+
+from pretalx.common.text.phrases import phrases
+
+register = template.Library()
+
+
+@register.simple_tag
+def phrase(phrase_name, **kwargs):
+    """Return a phrase. Used in templates when format kwargs are needed."""
+
+    _, module, name = phrase_name.split(".")
+
+    text = getattr(getattr(phrases, module), name)
+    if not kwargs:
+        return text
+    # Due to being previously used in templates, most phrases are formatted
+    # with old % formatting.
+    return mark_safe(str(text) % kwargs)  # noqa: S308  -- translated phrases with safe substitutions

@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+#
+# This file contains Apache-2.0 licensed contributions copyrighted by the following contributors:
+# SPDX-FileContributor: Raphael Michel
+
+from django.contrib import messages
+from django.db import transaction
+from django.http import Http404
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.utils.crypto import get_random_string
+from django.utils.translation import gettext_lazy as _
+from django.views import View
+
+from pretalx.cfp.flow import cfp_session
+from pretalx.cfp.views.event import EventPageMixin
+
+
+class SubmitStartView(EventPageMixin, View):
+    @staticmethod
+    def get(request, *args, **kwargs):
+        tmpid = request.resolver_match.kwargs.get("tmpid", get_random_string(length=6))
+        url = reverse(
+            "cfp:event.submit",
+            kwargs={
+                "event": request.event.slug,
+                "step": next(iter(request.event.cfp_flow.steps_dict.keys())),
+                "tmpid": tmpid,
+            },
+        )
+        if request.GET:
+            url += f"?{request.GET.urlencode()}"
+        return redirect(url)
+
+
+class SubmitRestartView(EventPageMixin, View):
+    @staticmethod
+    def get(request, *args, **kwargs):
+        request.resolver_match.kwargs["tmpid"] = get_random_string(length=6)
+        cfp_session_data = cfp_session(request)
+        cfp_session_data["code"] = request.resolver_match.kwargs["code"]
+        return SubmitStartView.get(request, *args, **kwargs)
+
+
+class SubmitWizard(EventPageMixin, View):
+    @transaction.atomic
+    def dispatch(self, request, *args, **kwargs):
+        self.event = self.request.event
+        request.access_code = None
+        if access_code := request.GET.get("access_code"):
+            access_code = request.event.submitter_access_codes.filter(
+                code__iexact=access_code
+            ).first()
+            if access_code and access_code.is_valid:
+                request.access_code = access_code
+        if not request.event.cfp.is_open and not request.access_code:
+            messages.error(request, _("Proposals are closed"))
+            return redirect(
+                reverse("cfp:event.start", kwargs={"event": request.event.slug})
+            )
+        step = None
+        for step in request.event.cfp_flow.steps:
+            if not step.is_applicable(request):
+                continue
+            if step.identifier == kwargs["step"]:
+                break
+            step.is_before = True
+            step.resolved_url = step.get_step_url(request)
+        if getattr(step, "is_before", False):  # The current step URL is incorrect
+            raise Http404
+        handler = getattr(step, request.method.lower(), self.http_method_not_allowed)
+        result = handler(request)
+
+        if request.method == "POST" and (
+            request.POST.get("action", "submit") == "draft"
+            or (step.identifier == "user" and request.GET.get("draft") == "1")
+        ):
+            # Check if the current step is valid before saving as draft
+            # If the form is invalid, the handler already displayed errors and returned
+            # the form page, so we should return that result instead of trying to save
+            step.request = request
+            if not step.is_completed(request):
+                # Form is invalid, return the error page that was already rendered by the handler
+                return result
+            return self.done(
+                request,
+                draft=True,
+                steps=[
+                    step
+                    for step in request.event.cfp_flow.steps
+                    if getattr(step, "is_before", False)
+                    or step.identifier == kwargs["step"]
+                    or step.identifier == "user"
+                ],
+            )
+        if request.method == "GET" or (
+            step.get_next_applicable(request) or not step.is_completed(request)
+        ):
+            if result and (csp_change := step.get_csp_update(request)):
+                result._csp_update = csp_change  # noqa: SLF001 -- django-csp convention
+            return result
+        return self.done(request)
+
+    def done(self, request, draft=False, steps=None):
+        # We are done, or at least we finished the last step. Time to check results.
+        valid_steps = []
+        steps = steps or request.event.cfp_flow.steps
+        for step in steps:
+            if step.is_applicable(request):
+                if not step.is_completed(request):
+                    query = {"draft": 1} if draft else None
+                    return redirect(step.get_step_url(request, query=query))
+                valid_steps.append(step)
+
+        # We are done, or at least the data checks out. Time to save results.
+        request.event.cfp_flow.steps_dict["user"].done(request)
+        for step in valid_steps:
+            if step.identifier != "user":
+                step.done(request, draft=draft)
+
+        return redirect(
+            reverse("cfp:event.user.submissions", kwargs={"event": request.event.slug})
+        )

@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+import smtplib
+
+from django.core.management.base import BaseCommand
+
+from pretalx.mail.tasks import task_send_transient
+
+
+class Command(BaseCommand):
+    help = "Send a test email to verify email configuration."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "email",
+            nargs="+",
+            help="One or more email addresses to send a test email to.",
+        )
+
+    def handle(self, *args, **options):
+        for address in options["email"]:
+            try:
+                task_send_transient.apply(
+                    kwargs={
+                        "to": [address],
+                        "subject": "pretalx test email",
+                        "body": "This is a test email from pretalx to verify your email configuration is working correctly.",
+                        "html": None,
+                    }
+                )
+                self.stdout.write(self.style.SUCCESS(f"Test email sent to {address}"))
+            except (OSError, smtplib.SMTPException) as e:
+                self.stderr.write(
+                    self.style.ERROR(f"Failed to send test email to {address}: {e}")
+                )

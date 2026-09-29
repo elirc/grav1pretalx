@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.apps import AppConfig
+
+
+class OrgaConfig(AppConfig):
+    name = "pretalx.orga"
+
+    def ready(self):
+        from . import (  # noqa: F401, PLC0415 -- app ready
+            permissions,
+            receivers,
+            signals,
+        )
+        from .phrases import OrgaPhrases  # noqa: F401, PLC0415 -- app ready

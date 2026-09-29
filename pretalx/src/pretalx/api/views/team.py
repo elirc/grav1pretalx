@@ -1,0 +1,172 @@
+# SPDX-FileCopyrightText: 2025-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
+from django_scopes import scopes_disabled
+from rest_framework import exceptions, serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from pretalx.api.documentation import (
+    OpenApiParameter,
+    OpenApiResponse,
+    OpenApiTypes,
+    build_expand_docs,
+    build_search_docs,
+    extend_schema,
+    extend_schema_view,
+)
+from pretalx.api.serializers.team import TeamInviteSerializer, TeamSerializer
+from pretalx.api.views.mixins import PretalxViewSetMixin
+from pretalx.event.domain.team import (
+    create_team_invite,
+    remove_team_member,
+    retract_team_invite,
+)
+from pretalx.event.models import Team, TeamInvite
+from pretalx.event.validators.organiser import check_access_permissions
+from pretalx.person.models import User
+
+
+class TeamInviteCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class TeamMemberRemoveSerializer(serializers.Serializer):
+    user_code = serializers.CharField()
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List Teams",
+        tags=["teams"],
+        parameters=[
+            build_search_docs("name"),
+            build_expand_docs("members", "invites", "limit_tracks"),
+        ],
+    ),
+    retrieve=extend_schema(
+        summary="Show Team",
+        tags=["teams"],
+        parameters=[build_expand_docs("members", "invites", "limit_tracks")],
+    ),
+    create=extend_schema(summary="Create Team", tags=["teams"]),
+    update=extend_schema(summary="Update Team", tags=["teams"]),
+    partial_update=extend_schema(
+        summary="Update Team (Partial Update)", tags=["teams"]
+    ),
+    destroy=extend_schema(summary="Delete Team", tags=["teams"]),
+)
+class TeamViewSet(PretalxViewSetMixin, viewsets.ModelViewSet):
+    serializer_class = TeamSerializer
+    queryset = Team.objects.none()
+    endpoint = "teams"
+    search_fields = ("name",)
+    ordering_fields = ("id", "name")
+    ordering = ("id",)
+
+    def get_queryset(self):
+        return (
+            self.request.organiser.teams.all()
+            .select_related("organiser")
+            .prefetch_related("members", "invites", "limit_events", "limit_tracks")
+            .order_by("pk")
+        )
+
+    def dispatch(self, *args, **kwargs):
+        with scopes_disabled():
+            return super().dispatch(*args, **kwargs)
+
+    def perform_update(self, serializer):
+        try:
+            with transaction.atomic():
+                super().perform_update(serializer)
+                check_access_permissions(self.request.organiser)
+        except (DjangoValidationError, IntegrityError) as e:
+            raise exceptions.ValidationError(str(e)) from None
+
+    def perform_destroy(self, instance):
+        try:
+            with transaction.atomic():
+                organiser = instance.organiser
+                instance.logged_actions().delete()
+                super().perform_destroy(instance)
+                check_access_permissions(organiser)
+        except (DjangoValidationError, IntegrityError) as e:
+            raise exceptions.ValidationError(str(e)) from None
+
+    @extend_schema(
+        summary="Invite Member to Team",
+        tags=["teams"],
+        description="Creates a team invite, and sends an invite.",
+        request=TeamInviteCreateSerializer,
+    )
+    @action(detail=True, methods=["post"])
+    def invite(self, request, *args, **kwargs):
+        team = self.get_object()
+        input_serializer = TeamInviteCreateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        email = input_serializer.validated_data["email"]
+
+        try:
+            invite = create_team_invite(team=team, email=email)
+        except DjangoValidationError as exc:
+            raise exceptions.ValidationError(exc.messages[0]) from None
+
+        output_serializer = TeamInviteSerializer(
+            invite, context=self.get_serializer_context()
+        )
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Delete Team Invite",
+        tags=["teams"],
+        parameters=[
+            OpenApiParameter("invite_id", OpenApiTypes.INT, OpenApiParameter.PATH)
+        ],
+    )
+    @action(detail=True, methods=["delete"], url_path="invites/(?P<invite_id>[^/.]+)")
+    def delete_invite(self, request, invite_id, *args, **kwargs):
+        team = self.get_object()
+        invite = get_object_or_404(TeamInvite, pk=invite_id, team=team)
+        retract_team_invite(invite, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        summary="Remove Member from Team",
+        tags=["teams"],
+        request=TeamMemberRemoveSerializer,
+        responses={
+            204: OpenApiResponse(description="Member removed successfully."),
+            400: OpenApiResponse(
+                description="Member cannot be removed as it may leave events inaccessible."
+            ),
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="remove_member")
+    def remove_member(self, request, *args, **kwargs):
+        team = self.get_object()
+        input_serializer = TeamMemberRemoveSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        user_code = input_serializer.validated_data["user_code"]
+
+        try:
+            user_to_remove = User.objects.get(code=user_code)
+        except User.DoesNotExist:
+            raise exceptions.ValidationError(
+                "User with the specified code not found."
+            ) from None
+
+        if not team.members.filter(pk=user_to_remove.pk).exists():
+            raise exceptions.ValidationError("This user is not a member of this team.")
+
+        try:
+            with transaction.atomic():
+                remove_team_member(team=team, member=user_to_remove, actor=request.user)
+                check_access_permissions(self.request.organiser)
+        except (DjangoValidationError, IntegrityError) as e:
+            raise exceptions.ValidationError(str(e)) from None
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

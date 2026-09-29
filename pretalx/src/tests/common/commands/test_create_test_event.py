@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: 2026-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+import datetime as dt
+from io import StringIO
+
+import pytest
+from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.utils.timezone import now
+from faker import Faker
+
+from pretalx.common.management.commands.create_test_event import Command, schedule_slot
+from pretalx.event.models import Event
+from pretalx.person.models import SpeakerProfile
+from pretalx.submission.models import Review
+from tests.factories.person import UserFactory
+
+pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+
+
+def test_schedule_slot_sets_start_end_room(talk_slot):
+    submission = talk_slot.submission
+    room = talk_slot.room
+    new_time = submission.event.datetime_from + dt.timedelta(hours=2)
+    expected_end = new_time + dt.timedelta(
+        minutes=submission.submission_type.default_duration
+    )
+
+    schedule_slot(submission, new_time, room)
+    talk_slot.refresh_from_db()
+
+    assert talk_slot.start == new_time
+    assert talk_slot.end == expected_end
+    assert talk_slot.room == room
+
+
+def test_create_user_with_retry_creates_user():
+    cmd = Command(stdout=StringIO(), stderr=StringIO())
+
+    user = cmd.create_user_with_retry(name="Test User", email_base="fresh@example.org")
+
+    assert user.name == "Test User"
+    assert user.email == "fresh@example.org"
+
+
+def test_create_user_with_retry_retries_on_duplicate_email():
+    UserFactory(name="Existing", email="taken@example.org")
+    cmd = Command(stdout=StringIO(), stderr=StringIO())
+
+    user = cmd.create_user_with_retry(name="New User", email_base="taken@example.org")
+
+    assert user.name == "New User"
+    assert user.email == "taken1@example.org"
+
+
+def test_create_user_with_retry_exhausts_retries_raises():
+    cmd = Command(stdout=StringIO(), stderr=StringIO())
+    for i in range(3):
+        email = "clash@example.org" if i == 0 else f"clash{i}@example.org"
+        UserFactory(name=f"Blocker {i}", email=email)
+
+    with pytest.raises(ValidationError):
+        cmd.create_user_with_retry(
+            name="Unlucky", email_base="clash@example.org", max_retries=3
+        )
+
+
+def test_build_event_without_admin_returns_none():
+    cmd = Command(stdout=StringIO(), stderr=StringIO())
+
+    result = cmd.build_event("schedule", "test-slug")
+
+    assert result is None
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("stage", ("cfp", "review", "schedule", "over"))
+def test_create_test_event_end_to_end(stage):
+    UserFactory(is_administrator=True)
+    slug = f"demo-{stage}"
+
+    call_command("create_test_event", stage=stage, slug=slug, seed="42")
+
+    event = Event.objects.get(slug=slug)
+    assert event.name == "DemoCon"
+    assert event.rooms.count() == 2
+    assert event.tracks.count() >= 2
+    assert event.cfp is not None
+    submissions = event.submissions.all()
+    assert submissions.count() > 0
+
+    if stage == "cfp":
+        assert event.date_from > now().date()
+        assert Review.objects.filter(submission__event=event).count() == 0
+        assert submissions.filter(state="confirmed").count() == 0
+    elif stage == "review":
+        assert event.date_from > now().date()
+        assert Review.objects.filter(submission__event=event).count() > 0
+        assert submissions.filter(state="confirmed").exists()
+        assert submissions.filter(state="rejected").exists()
+        assert event.schedules.count() == 1  # only wip, no frozen
+    elif stage == "schedule":
+        assert Review.objects.filter(submission__event=event).count() > 0
+        assert submissions.filter(state="confirmed").exists()
+        assert event.schedules.filter(version="v1.0").exists()
+    else:  # "over"
+        assert event.date_from < now().date()
+        assert Review.objects.filter(submission__event=event).count() > 0
+        assert submissions.filter(state="confirmed").exists()
+        assert event.schedules.filter(version="v1.0").exists()
+
+
+def test_create_test_event_handle_without_admin_returns_early():
+    call_command("create_test_event", slug="no-admin", seed="42")
+
+    assert not Event.objects.filter(slug="no-admin").exists()
+
+
+@pytest.mark.slow
+def test_create_test_event_handle_without_seed():
+    UserFactory(is_administrator=True)
+
+    call_command("create_test_event", stage="cfp", slug="no-seed")
+
+    assert Event.objects.filter(slug="no-seed").exists()
+
+
+def test_build_speaker_reuses_existing_user(event):
+    cmd = Command(stdout=StringIO(), stderr=StringIO())
+    Faker.seed(99)
+    cmd.fake = Faker()
+    cmd.event = event
+
+    # Peek at the email build_speaker will generate, then reset
+    next_email = cmd.fake.user_name() + "@example.org"
+    Faker.seed(99)
+    cmd.fake = Faker()
+    UserFactory(name="Pre-existing", email=next_email)
+
+    speaker = cmd.build_speaker()
+
+    assert speaker.user.email == next_email
+    assert SpeakerProfile.objects.filter(user__email=next_email, event=event).exists()

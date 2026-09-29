@@ -1,0 +1,44 @@
+<!--
+SPDX-FileCopyrightText: 2020-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% load i18n %}
+{% load safelink %}
+
+{% comment %}
+
+    Hi, there!
+
+    You have found the place that will allow you to remove or change the link to pretalx from all
+    event websites. However, doing so will most likely violate the pretalx license:
+
+    Building pretalx has taken a ton of time and work and dedication – all of it right in the open
+    for people to see and to use. I’m busy adding new features all the time, and on the side I
+    take care of the boring-but-vital maintenance work. Despite being free, pretalx plays in the
+    same league as commercial platforms – or you probably wouldn’t be here, setting it up, right?
+
+    I only make money from pretalx when people buy support contracts or use the hosting platform at
+    https://pretalx.com. Now, this isn’t meant to be a money grab: I hope our installation docs and
+    open approach make it clear that I want people to run their own instances! But a healthy project
+    needs people to survive, and if you patch out the link to the project, those people – prospective
+    contributors or customers – won’t find us. Without contributors and users and, yes, customers,
+    pretalx will be less maintained and ultimately less useful to you.
+
+    So this is why I changed the license and made specific provisions for the removal of the pretalx
+    attribution in the website footer. Please make sure you read the license, particularly the intro
+    containing the specific extra condition.
+
+    Thank you,
+    Tobias
+
+    P.S.: If you find yourself interested in a support contract or paid feature development after all,
+    you can reach me at sales@pretalx.com.
+
+{% endcomment %}
+{% if not secure_link %}
+    {% safelink "https://pretalx.com" as secure_link %}
+{% endif %}
+{% with 'href="'|add:secure_link|add:'" target="_blank" rel="noopener"'|safe as a_attr %}
+    {% blocktranslate trimmed %}powered by <a {{ a_attr }}>pretalx</a>{% endblocktranslate %} {# removing or hiding this might be in violation of the pretalx license #}
+{% endwith %}

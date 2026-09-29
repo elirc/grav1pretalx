@@ -1,0 +1,543 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.core.validators import RegexValidator
+from django.db import models
+from django.urls import reverse
+from django.utils.functional import cached_property
+from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
+from django_scopes import ScopedManager
+from i18nfield.fields import I18nCharField
+from i18nfield.strings import override
+
+from pretalx.agenda.rules import is_agenda_visible
+from pretalx.common.models.fields import DateField, DateTimeField
+from pretalx.common.models.mixins import GenerateCode, OrderedModel, PretalxModel
+from pretalx.common.text.path import hashed_path
+from pretalx.common.text.phrases import phrases
+from pretalx.common.urls import EventUrls
+from pretalx.event.rules import can_change_event_settings
+from pretalx.person.rules import is_reviewer
+from pretalx.submission.enums import (
+    QuestionIcon,
+    QuestionRequired,
+    QuestionTarget,
+    QuestionVariant,
+)
+from pretalx.submission.rules import (
+    has_team_question_access,
+    is_cfp_open,
+    orga_can_change_submissions,
+)
+from pretalx.submission.validators.question import (
+    validate_answer_option_identifier_unique,
+    validate_question_deadline,
+    validate_question_identifier_unique,
+)
+
+
+def answer_file_path(instance, filename):
+    event_slug = instance.question.event.slug
+    question_id = instance.question.pk
+
+    target = instance.question.target
+    if target == QuestionTarget.SUBMISSION and instance.submission:
+        code = instance.submission.code
+    elif target == QuestionTarget.SPEAKER and instance.speaker:
+        code = instance.speaker.code
+    else:
+        code = f"r{instance.review.pk}"
+
+    target_name = f"q{question_id}-{code}"
+    return hashed_path(
+        filename, target_name=target_name, upload_dir=f"{event_slug}/question_uploads/"
+    )
+
+
+class QuestionManager(models.Manager):
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .exclude(active=False)
+            .exclude(target=QuestionTarget.REVIEWER)
+        )
+
+
+class AllQuestionManager(models.Manager):
+    pass
+
+
+# Question and question option permissions should be in sync
+QUESTION_PERMISSIONS = {
+    # List and view are assumed to only be used on public questions
+    "list": is_cfp_open | is_agenda_visible | orga_can_change_submissions | is_reviewer,
+    "view": is_cfp_open | is_agenda_visible | orga_can_change_submissions | is_reviewer,
+    "orga_list": orga_can_change_submissions,
+    "orga_view": orga_can_change_submissions & has_team_question_access,
+    "create": can_change_event_settings,
+    "update": can_change_event_settings,
+    "delete": can_change_event_settings,
+}
+
+
+class Question(GenerateCode, OrderedModel, PretalxModel):
+    """Questions can be asked per.
+
+    :class:`~pretalx.submission.models.submission.Submission`, per speaker, or
+    of reviewers per :class:`~pretalx.submission.models.review.Review`.
+
+    Questions can have many types, which offers a flexible framework to give organisers
+    the opportunity to get all the information they need.
+
+    :param variant: Can be any of 'number', 'string', 'text', 'boolean',
+        'file', 'choices', or 'multiple_choice'. Defined in the
+        ``QuestionVariant`` class.
+    :param target: Can be any of 'submission', 'speaker', or 'reviewer'.
+        Defined in the ``QuestionTarget`` class.
+    :param deadline: Datetime field. This field is required for 'after deadline' and 'freeze after' options of
+        question_required field and optional for the other ones. For 'after deadline' it shows that the answer will
+        be optional before the deadline and mandatory after that deadline. For 'freeze after' it shows that the
+        answer will be allowed before the deadline and frozen after that deadline
+    :param question_required: Can be any of 'none', 'require ', 'after deadline', or 'freeze after'.
+        Defined in the ``QuestionRequired`` class.
+        'required' answering this question will always be required.
+        'optional' means that it will never be mandatory.
+        'after deadline' the answer will be optional before the deadline and mandatory after the deadline.
+    :param freeze_after: Can be a datetime field or null.
+        For 'freeze after' the answer will be allowed before the deadline and frozen after the deadline.
+    :param position: Position in the question order in this event.
+    """
+
+    code_length = 8
+    code_property = "identifier"
+    code_scope = ("event",)
+
+    event = models.ForeignKey(
+        to="event.Event", on_delete=models.PROTECT, related_name="questions"
+    )
+    variant = models.CharField(
+        max_length=QuestionVariant.get_max_length(),
+        choices=QuestionVariant.choices,
+        default=QuestionVariant.STRING,
+    )
+    target = models.CharField(
+        max_length=QuestionTarget.get_max_length(),
+        choices=QuestionTarget.choices,
+        default=QuestionTarget.SUBMISSION,
+        verbose_name=_("Field type"),
+        help_text=_(
+            "Do you require an answer from every speaker or for every session?"
+        ),
+    )
+    deadline = DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Deadline"),
+        help_text=_("Set a deadline to make this field required after the given date."),
+    )
+    freeze_after = DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("freeze after"),
+        help_text=_(
+            "Set a deadline to stop changes to responses after the given date."
+        ),
+    )
+    question_required = models.CharField(
+        max_length=QuestionRequired.get_max_length(),
+        choices=QuestionRequired.choices,
+        default=QuestionRequired.OPTIONAL,
+        verbose_name=_("Field required"),
+    )
+    tracks = models.ManyToManyField(
+        to="submission.Track",
+        related_name="questions",
+        help_text=_(
+            "You can limit this field to some tracks. Leave empty to apply to all tracks."
+        ),
+        verbose_name=_("Tracks"),
+        blank=True,
+    )
+    submission_types = models.ManyToManyField(
+        to="submission.SubmissionType",
+        related_name="questions",
+        help_text=_(
+            "You can limit this field to some session types. Leave empty to apply to all session types."
+        ),
+        verbose_name=_("Session types"),
+        blank=True,
+    )
+    limit_teams = models.ManyToManyField(
+        to="event.Team",
+        related_name="+",
+        help_text=_(
+            "You can limit this field to specific teams. Only members of these teams will be able to see responses."
+        ),
+        verbose_name=_("Limit access"),
+        blank=True,
+    )
+    question = I18nCharField(
+        max_length=800,
+        verbose_name=pgettext_lazy("display label for custom field", "Label"),
+    )
+    help_text = I18nCharField(
+        null=True,
+        blank=True,
+        max_length=800,
+        verbose_name=_("Help text"),
+        help_text=_("Will appear just like this text below the custom input field.")
+        + " "
+        + phrases.base.use_markdown,
+    )
+    default_answer = models.TextField(
+        null=True, blank=True, verbose_name=_("default answer")
+    )
+    position = models.IntegerField(default=0)
+    identifier = models.CharField(
+        max_length=190,
+        verbose_name=_("Internal identifier"),
+        help_text=_(
+            "You can enter any value here to make it easier to match the data "
+            "with other sources. If you do not input one, we will generate one "
+            "automatically."
+        ),
+        validators=[
+            RegexValidator(
+                regex=r"^[a-zA-Z0-9.\-_]+$",
+                message=_(
+                    "The identifier may only contain letters, numbers, dots, "
+                    "dashes, and underscores."
+                ),
+            )
+        ],
+    )
+    active = models.BooleanField(
+        default=True,
+        verbose_name=_("active"),
+        help_text=_("Inactive fields will no longer be shown."),
+    )
+    contains_personal_data = models.BooleanField(
+        default=True,
+        verbose_name=_("Responses contain personal data"),
+        help_text=_(
+            "If a user deletes their account, responses containing personal data will be removed, too."
+        ),
+    )
+    min_length = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name=_("Minimum length"),
+        help_text=_(
+            "Minimum text length in characters or words (set in CfP settings)."
+        ),
+    )
+    max_length = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name=_("Maximum length"),
+        help_text=_(
+            "Maximum text length in characters or words (set in CfP settings)."
+        ),
+    )
+    min_number = models.DecimalField(
+        decimal_places=6,
+        max_digits=16,
+        null=True,
+        blank=True,
+        verbose_name=_("Minimum value"),
+    )
+    max_number = models.DecimalField(
+        decimal_places=6,
+        max_digits=16,
+        null=True,
+        blank=True,
+        verbose_name=_("Maximum value"),
+    )
+    min_date = DateField(null=True, blank=True, verbose_name=_("Minimum value"))
+    max_date = DateField(null=True, blank=True, verbose_name=_("Maximum value"))
+    min_datetime = DateTimeField(null=True, blank=True, verbose_name=_("Minimum value"))
+    max_datetime = DateTimeField(null=True, blank=True, verbose_name=_("Maximum value"))
+    is_public = models.BooleanField(
+        default=False,
+        verbose_name=_("Publish answers"),
+        help_text=_(
+            "Responses will be shown on session or speaker pages as appropriate."
+        ),
+    )
+    is_visible_to_reviewers = models.BooleanField(
+        default=True,
+        verbose_name=_("Show answers to reviewers"),
+        help_text=_(
+            "Should responses to this field be shown to reviewers? This is helpful if you want to collect personal information, but use anonymous reviews."
+        ),
+    )
+    icon = models.CharField(
+        max_length=QuestionIcon.get_max_length(),
+        choices=QuestionIcon.choices,
+        default=None,
+        null=True,
+        blank=False,
+        verbose_name=_("Icon"),
+        help_text=_(
+            "Custom URL fields that are shown publicly can use an icon when displaying the link."
+        ),
+    )
+    objects = ScopedManager(event="event", _manager_class=QuestionManager)
+    all_objects = ScopedManager(event="event", _manager_class=AllQuestionManager)
+
+    log_prefix = "pretalx.question"
+
+    class Meta:
+        ordering = ("position", "id")
+        rules_permissions = QUESTION_PERMISSIONS
+        unique_together = [("event", "identifier")]
+
+    @property
+    def log_parent(self):
+        return self.event
+
+    @cached_property
+    def required(self):
+        _now = now()
+        # Question should become optional in order to be frozen
+        if self.read_only:
+            return False
+        if self.question_required == QuestionRequired.REQUIRED:
+            return True
+        if self.question_required == QuestionRequired.AFTER_DEADLINE:
+            return self.deadline <= _now
+        return False
+
+    @property
+    def read_only(self):
+        return self.freeze_after and (self.freeze_after <= now())
+
+    @property
+    def show_icon(self):
+        return self.variant == QuestionVariant.URL and self.icon not in ("", "-", None)
+
+    @cached_property
+    def icon_url(self):
+        if self.show_icon:
+            return reverse(
+                "api:question-icon", kwargs={"event": self.event.slug, "pk": self.pk}
+            )
+
+    class urls(EventUrls):
+        base = "{self.event.cfp.urls.questions}{self.pk}/"
+        edit = "{base}edit/"
+        delete = "{base}delete/"
+        toggle = "{base}toggle/"
+        download = "{base}download/"
+
+    def __str__(self):
+        return str(self.question)
+
+    def clean(self):
+        super().clean()
+        validate_question_deadline(self)
+        if not (self.event_id and self.identifier):
+            return
+        validate_question_identifier_unique(
+            event=self.event, identifier=self.identifier, instance=self
+        )
+
+    @staticmethod
+    def get_order_queryset(event):
+        return event.questions(manager="all_objects").all()
+
+    def get_instance_data(self):
+        data = super().get_instance_data()
+        if self.pk and self.variant in (
+            QuestionVariant.CHOICES,
+            QuestionVariant.MULTIPLE,
+        ):
+            options = list(self.options.all().values_list("answer", flat=True))
+            if options:
+                with override(self.event.locale):
+                    data["options"] = "\n".join(f"- {option}" for option in options)
+        return data
+
+
+class AnswerOption(GenerateCode, PretalxModel):
+    """Provides the possible answers for.
+
+    :class:`~pretalx.submission.models.question.Question` objects of variant
+    'choice' or 'multiple_choice'.
+    """
+
+    code_length = 8
+    code_property = "identifier"
+    code_scope = ("question",)
+
+    question = models.ForeignKey(
+        to="submission.Question", on_delete=models.PROTECT, related_name="options"
+    )
+    answer = I18nCharField(verbose_name=_("Response"))
+    position = models.IntegerField(default=0)
+    identifier = models.CharField(
+        max_length=190,
+        verbose_name=_("Internal identifier"),
+        help_text=_(
+            "You can enter any value here to make it easier to match the data "
+            "with other sources. If you do not input one, we will generate one "
+            "automatically."
+        ),
+        validators=[
+            RegexValidator(
+                regex=r"^[a-zA-Z0-9.\-_]+$",
+                message=_(
+                    "The identifier may only contain letters, numbers, dots, "
+                    "dashes, and underscores."
+                ),
+            )
+        ],
+    )
+
+    objects = ScopedManager(event="question__event")
+    log_prefix = "pretalx.question.option"
+
+    class Meta:
+        ordering = ("position", "id")
+        verbose_name_plural = _("Options")  # Used in question log display
+        rules_permissions = QUESTION_PERMISSIONS
+        unique_together = [("question", "identifier")]
+
+    @cached_property
+    def event(self):
+        return self.question.event
+
+    @property
+    def log_parent(self):
+        return self.question
+
+    def __str__(self):
+        """Used in choice forms."""
+        return str(self.answer)
+
+    def clean(self):
+        super().clean()
+        if not (self.question_id and self.identifier):
+            return
+        validate_answer_option_identifier_unique(
+            question=self.question, identifier=self.identifier, instance=self
+        )
+
+
+class Answer(PretalxModel):
+    """Answers are connected to a.
+
+    :class:`~pretalx.submission.models.question.Question`, and, depending on
+    type, a :class:`~pretalx.person.models.profile.SpeakerProfile`, a
+    :class:`~pretalx.submission.models.submission.Submission`, or a
+    :class:`~pretalx.submission.models.review.Review`.
+    """
+
+    log_prefix = "pretalx.submission.answer"
+
+    question = models.ForeignKey(
+        to="submission.Question", on_delete=models.PROTECT, related_name="answers"
+    )
+    submission = models.ForeignKey(
+        to="submission.Submission",
+        on_delete=models.PROTECT,
+        related_name="answers",
+        null=True,
+        blank=True,
+    )
+    speaker = models.ForeignKey(
+        to="person.SpeakerProfile",
+        on_delete=models.PROTECT,
+        related_name="answers",
+        null=True,
+        blank=True,
+    )
+    review = models.ForeignKey(
+        to="submission.Review",
+        on_delete=models.PROTECT,
+        related_name="answers",
+        null=True,
+        blank=True,
+    )
+    answer = models.TextField()
+    answer_file = models.FileField(upload_to=answer_file_path, null=True, blank=True)
+    options = models.ManyToManyField(
+        to="submission.AnswerOption", related_name="answers"
+    )
+
+    objects = ScopedManager(event="question__event")
+
+    class Meta:
+        rules_permissions = {
+            # Getting the answer API right is even trickier than getting the
+            # question API right. Questions and options follow the same logic:
+            # if you can see or change the question, the same goes for the option.
+            # Not so with answers: Not all answers to public questions are public,
+            # for example, and answers to reviewer questions are visible to people
+            # depending on both their role and the current review phase.
+            # To escape this complexity, we restrict the entire endpoint to people
+            # with "change_event_settings" permissions for now, and tackle this
+            # properly if there is demand and a) funding or b) contributions.
+            "api": can_change_event_settings & orga_can_change_submissions
+        }
+
+    @cached_property
+    def event(self):
+        return self.question.event
+
+    @property
+    def _target_field(self):
+        return {
+            QuestionTarget.SUBMISSION: "submission",
+            QuestionTarget.SPEAKER: "speaker",
+            QuestionTarget.REVIEWER: "review",
+        }[self.question.target]
+
+    @property
+    def target_object(self):
+        return getattr(self, self._target_field)
+
+    @target_object.setter
+    def target_object(self, obj):
+        setattr(self, self._target_field, obj)
+
+    @property
+    def log_parent(self):
+        return self.target_object
+
+    def __str__(self):
+        """Help when debugging."""
+        return f"Answer(question={self.question.question}, answer={self.answer})"
+
+    @cached_property
+    def boolean_answer(self):
+        if self.answer == "True":
+            return True
+        if self.answer == "False":
+            return False
+
+    @property
+    def answer_string(self):
+        if self.question.variant in ("number", "string", "text", "url"):
+            return self.answer or ""
+        if self.question.variant == "boolean":
+            if self.boolean_answer is True:
+                return _("Yes")
+            if self.boolean_answer is False:
+                return _("No")
+            return ""
+        if self.question.variant == "file":
+            return self.answer_file.url if self.answer_file else ""
+        if self.question.variant in ("choices", "multiple_choice"):
+            return ", ".join(str(option.answer) for option in self.options.all())
+
+    @property
+    def is_answered(self):
+        return bool(self.answer_string)
+
+    def log_action(self, *args, **kwargs):
+        kwargs.setdefault("content_object", self.target_object)
+        return super().log_action(*args, **kwargs)

@@ -1,0 +1,25 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+This file contains Apache-2.0 licensed contributions copyrighted by the following contributors:
+SPDX-FileContributor: Raphael Michel
+-->
+
+{% extends "common/error.html" %}
+
+{% load i18n %}
+{% load static %}
+
+{% block title %}{{ phrases.base.permission_denied }}{% endblock title %}
+{% block error_image %}
+    <img loading="lazy" src="{% static "common/img/error_403.svg" %}" class="img" alt="{{ phrases.base.permission_denied }}">
+{% endblock error_image %}
+{% block error_message %}
+    {{ phrases.base.permission_denied }}
+    </h2>
+    <h5>
+        <p class="ml-auto mr-auto text-center">{{ phrases.base.permission_denied_long }}</p>
+    </h5>
+{% endblock error_message %}
+{% block error_code %}403{% endblock error_code %}

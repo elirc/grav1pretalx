@@ -1,0 +1,41 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "agenda/base.html" %}
+
+{% load form_media %}
+{% load i18n %}
+
+{% block agenda_stylesheets %}
+    {% form_media %}
+{% endblock %}
+
+{% block content %}
+
+    <h3 class="talk-title">
+        <a href="{{ talk.urls.public }}">{{ quotation_open }}{{ talk.title }}{{ quotation_close }}</a>
+    </h3>
+    <div class="talk row">
+        <div class="talk-content">
+            <div class="description">
+                {% blocktranslate trimmed %}
+                    Feedback is a valuable tool for speakers to improve their content and presentation.
+                    Even short feedback can prove valuable to a speaker! Please
+                    take the time and communicate your thoughts in a constructive way.
+                {% endblocktranslate %}
+                {{ phrases.agenda.feedback_success }}
+                {% if not talk.does_accept_feedback or not can_give_feedback %}
+                    {% translate "You can’t give feedback for this session at this time." %}
+                {% else %}
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {{ form }}
+                        <button type="submit" class="btn-success float-right">{{ phrases.base.send }}</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock content %}

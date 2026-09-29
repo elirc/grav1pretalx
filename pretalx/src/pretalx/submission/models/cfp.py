@@ -1,0 +1,208 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+import copy
+import datetime as dt
+from functools import partial
+
+from django.db import models
+from django.utils.functional import cached_property
+from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
+from i18nfield.fields import I18nCharField, I18nTextField
+
+from pretalx.common.models.fields import DateTimeField
+from pretalx.common.models.mixins import PretalxModel
+from pretalx.common.text.phrases import phrases
+from pretalx.common.urls import EventUrls
+
+
+def default_settings():
+    return {"flow": {}, "count_length_in": "chars", "show_deadline": True}
+
+
+_DEFAULT_FIELDS = {
+    "name": {"visibility": "required"},
+    "title": {"visibility": "required", "min_length": None, "max_length": None},
+    "submission_type": {"visibility": "required"},
+    "abstract": {"visibility": "required", "min_length": None, "max_length": None},
+    "description": {"visibility": "optional", "min_length": None, "max_length": None},
+    "biography": {"visibility": "required", "min_length": None, "max_length": None},
+    "avatar": {"visibility": "optional"},
+    "availabilities": {"visibility": "do_not_ask"},
+    "notes": {"visibility": "optional"},
+    "do_not_record": {"visibility": "optional"},
+    "image": {"visibility": "optional"},
+    "track": {"visibility": "do_not_ask"},
+    "duration": {"visibility": "do_not_ask"},
+    "content_locale": {"visibility": "required"},
+    "additional_speaker": {"visibility": "optional", "max": None},
+    "tags": {"visibility": "do_not_ask", "min": None, "max": None},
+    "resources": {"visibility": "do_not_ask"},
+}
+
+
+def default_fields():
+    """Default configuration for CfP fields.
+
+    Returns a deep copy to prevent accidental mutation of the defaults.
+    """
+    return copy.deepcopy(_DEFAULT_FIELDS)
+
+
+def field_helper(cls):
+    def is_field_requested(self, field):
+        return (
+            self.fields.get(field, default_fields()[field])["visibility"]
+            != "do_not_ask"
+        )
+
+    def is_field_required(self, field):
+        return (
+            self.fields.get(field, default_fields()[field])["visibility"] == "required"
+        )
+
+    for field in default_fields():
+        setattr(
+            cls, f"request_{field}", property(partial(is_field_requested, field=field))
+        )
+        setattr(
+            cls, f"require_{field}", property(partial(is_field_required, field=field))
+        )
+    return cls
+
+
+@field_helper
+class CfP(PretalxModel):
+    """Every :class:`~pretalx.event.models.event.Event` has one Call for
+    Papers/Participation/Proposals.
+
+    :param deadline: The regular deadline. Please note that submissions can be available for longer than this if different deadlines are configured on single submission types.
+    """
+
+    log_prefix = "pretalx.cfp"
+
+    event = models.OneToOneField(to="event.Event", on_delete=models.PROTECT)
+    headline = I18nCharField(
+        max_length=300, null=True, blank=True, verbose_name=_("headline")
+    )
+    text = I18nTextField(
+        null=True,
+        blank=True,
+        verbose_name=pgettext_lazy("CfP text body", "text"),
+        help_text=phrases.base.use_markdown,
+    )
+    default_type = models.ForeignKey(
+        to="submission.SubmissionType",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name=_("Default session type"),
+    )
+    opening = DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Opening"),
+        help_text=_(
+            "Please put in the date you want to start accepting proposals from users. "
+            "Leave the date empty to start accepting proposals immediately once the event is live."
+        ),
+    )
+    deadline = DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Deadline"),
+        help_text=_(
+            "Please put in the last date you want to accept proposals from users."
+        ),
+    )
+    settings = models.JSONField(default=default_settings)
+    fields = models.JSONField(default=default_fields)
+
+    class urls(EventUrls):
+        base = "{self.event.orga_urls.cfp}"
+        editor = "{base}editor/"
+        questions = "{base}questions/"
+        new_question = "{questions}new/"
+        remind_questions = "{questions}remind/"
+        text = edit_text = "{base}text"
+        types = "{base}types/"
+        new_type = "{types}new"
+        tracks = "{base}tracks/"
+        new_track = "{tracks}new/"
+        access_codes = "{base}access-codes/"
+        new_access_code = "{access_codes}new/"
+        public = "{self.event.urls.base}cfp"
+        submit = "{self.event.urls.base}submit/"
+
+    def __str__(self) -> str:
+        """Help with debugging."""
+        return f"CfP(event={self.event.slug})"
+
+    def copy_data_from(self, other_cfp, skip_attributes=None):
+        # default_type gets set by pretalx.event.domain.event.copy_event_data
+        clonable_attributes = [
+            "headline",
+            "text",
+            "opening",
+            "deadline",
+            "settings",
+            "fields",
+        ]
+        if skip_attributes:
+            clonable_attributes = [
+                attr for attr in clonable_attributes if attr not in skip_attributes
+            ]
+        for field in clonable_attributes:
+            setattr(self, field, getattr(other_cfp, field))
+        self.save()
+
+    @cached_property
+    def before_opening(self) -> bool:
+        """Returns True if an opening date is set
+        and the current time is before that date.
+        """
+        return bool(self.opening and now() < self.opening)
+
+    @cached_property
+    def after_deadline(self) -> bool:
+        """Returns True if a (maximum) deadline is set
+        and the current time is after that deadline.
+        """
+        return bool(self.deadline and self.max_deadline and self.max_deadline < now())
+
+    @cached_property
+    def is_open(self) -> bool:
+        """Returns True if the CfP is currently open,
+        i.e. not before the opening date and not after the deadline.
+        """
+        return not (self.before_opening or self.after_deadline)
+
+    @cached_property
+    def max_deadline(self) -> dt.datetime:
+        """Returns the latest date any submission is possible.
+
+        This includes the deadlines set on any submission type for this
+        event.
+        """
+        deadlines = list(
+            self.event.submission_types.filter(deadline__isnull=False).values_list(
+                "deadline", flat=True
+            )
+        )
+        if self.deadline:
+            deadlines.append(self.deadline)
+        return max(deadlines) if deadlines else None
+
+    @property
+    def max_speakers(self) -> int | None:
+        field = (
+            self.fields.get("additional_speaker")
+            or default_fields()["additional_speaker"]
+        )
+        return field.get("max")
+
+    @property
+    def tag_limits(self) -> tuple[int | None, int | None]:
+        field = self.fields.get("tags") or default_fields()["tags"]
+        return field.get("min"), field.get("max")

@@ -1,0 +1,80 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+This file contains Apache-2.0 licensed contributions copyrighted by the following contributors:
+SPDX-FileContributor: Jahongir Rahmonov
+-->
+
+{% load i18n %}
+
+{% if entries|length or show_history_title %}
+    <div class="card{% if history_class %} {{ history_class }}{% endif %}">
+        {% if show_history_title %}
+            <div class="card-header">
+                <h4 class="card-title">{% translate "Recent Changes" %}</h4>
+            </div>
+        {% endif %}
+        <ul class="list-group list-group-flush">
+            {% for log in entries %}
+                <li class="list-group-item logentry">
+                    <span class="time">
+                        <i class="fa fa-clock-o"></i>{{ log.timestamp|date:"SHORT_DATETIME_FORMAT" }}
+                    </span>
+                    {% if not hide_user %}
+                        <span class="person">
+                            {% if log.person %}
+                                {% if log.is_orga_action %}
+                                    <i class="fa fa-check-circle fa-fw text-success" title="{% translate "This change was performed by an event organiser." %}"></i>
+                                {% else %}
+                                    <i class="fa fa-user fa-fw"></i>
+                                {% endif %}
+                                {% include "orga/includes/user_name.html" with user=log.person lightbox=True %}
+                            {% endif %}
+                        </span>
+                    {% endif %}
+                    {% if show_event %}
+                        <span class="event">
+                            {% if log.event %}
+                                <i class="fa fa-calendar"></i>
+                                <a href="{{ log.event.orga_urls.base }}">{{ log.event.name }}</a>
+                            {% endif %}
+                        </span>
+                    {% endif %}
+                    {% if not hide_object %}
+                        <span class="log-object">
+                            {% if log.display_object %}<i class="fa fa-flag"></i>{{ log.display_object|safe }}{% endif %}
+                        </span>
+                    {% endif %}
+                    <span class="log-text">{{ log.display }}</span>
+                    {% if log.data.changes %}
+                        <a href="{% url 'orga:event.history.detail' event=log.event.slug pk=log.pk %}"
+                           class="btn btn-sm btn-outline-info log-detail"
+                           title="{% translate 'View detailed changes' %}"
+                           hx-get="{% url 'orga:event.history.detail' event=log.event.slug pk=log.pk %}"
+                           hx-target="#dialog-history-details-content"
+                           hx-swap="innerHTML">
+                            <i class="fa fa-list-ul"></i>
+                        </a>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <dialog id="dialog-history-details" closedby="any">
+        <div class="modal-card-content">
+            <div class="dialog-header">
+                <h3>{% translate "Log Detail" %}</h3>
+                <button class="close-dialog btn btn-sm btn-outline-secondary dialog-close" aria-label="{% translate 'Close' %}">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div id="dialog-history-details-content" class="dialog-content">
+                <div class="dialog-loading text-center p-4">
+                    {% include "common/includes/loading_spinner.html" %}
+                </div>
+            </div>
+        </div>
+    </dialog>
+{% endif %}

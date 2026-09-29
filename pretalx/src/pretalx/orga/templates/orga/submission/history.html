@@ -1,0 +1,30 @@
+<!--
+SPDX-FileCopyrightText: 2018-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/submission/base.html" %}
+
+{% load i18n %}
+{% load static %}
+
+{% block stylesheets %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static "orga/css/forms/i18n.css" %}">
+    <link rel="stylesheet" href="{% static "orga/css/ui/history.css" %}">
+{% endblock stylesheets %}
+
+{% block scripts %}
+    {{ block.super }}
+    <script defer src="{% static "common/js/ui/dialog.js" %}"></script>
+    <script defer src="{% static "common/js/ui/history-dialog.js" %}"></script>
+{% endblock scripts %}
+
+{% block submission_content %}
+    <div class="dashboard-history submission-history">
+
+        {% include "common/logs.html" with entries=log_entries hide_object=True %}
+        {% include "orga/includes/pagination.html" %}
+
+    </div>
+{% endblock submission_content %}

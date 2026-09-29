@@ -1,0 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/auth/base.html" %}
+{% load i18n %}
+{% load static %}
+{% block title %}{% translate "Log in" %}{% endblock title %}
+{% block content %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form }}
+    </form>
+{% endblock content %}

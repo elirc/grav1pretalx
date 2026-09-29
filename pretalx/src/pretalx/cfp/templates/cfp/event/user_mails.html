@@ -1,0 +1,22 @@
+<!--
+SPDX-FileCopyrightText: 2019-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "cfp/event/base.html" %}
+{% load i18n %}
+{% load form_media %}
+
+{% block scripts %}{% form_media extra_js="common/js/ui/collapse.js" %}{% endblock scripts %}
+
+{% block title %}{% translate "Your Emails" %} :: {% endblock title %}
+
+{% block content %}
+    <h2>{% translate "Your Emails" %}</h2>
+    <p>
+        {% translate "These are emails the organisers sent you, so you should be able to find them in your email inbox, but this page serves as a helper in case your email address was unavailable or the emails got lost in some way." %}
+    </p>
+
+    {% include "common/mail_log.html" %}
+
+{% endblock content %}

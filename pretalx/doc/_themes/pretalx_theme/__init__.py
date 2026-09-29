@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2017-present Tobias Kunze
+# SPDX-License-Identifier: Apache-2.0
+
+"""Sphinx theme for pretalx docs. Based on the ReadTheDocs theme."""
+
+from pathlib import Path
+
+__version__ = "0.0.0"
+__version_full__ = __version__
+
+
+def get_html_theme_path():
+    """Return list of HTML theme paths."""
+    return str(Path(__file__).parent.parent.resolve())

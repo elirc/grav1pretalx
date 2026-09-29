@@ -1,0 +1,22 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/auth/base.html" %}
+
+{% load i18n %}
+
+{% block title %}{{ phrases.base.password_reset_heading }}{% endblock title %}
+
+{% block content %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="labelless-password-input-form">
+            <h4>{{ phrases.base.password_reset_heading }}</h4>
+            <p>{{ phrases.base.password_reset_nearly_done }}</p>
+            {{ form }}
+            <button type="submit" class="btn btn-block btn-success">{{ phrases.base.save }}</button>
+        </div>
+    </form>
+{% endblock content %}

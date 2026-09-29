@@ -1,0 +1,20 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% load i18n %}
+
+<p>
+    {% if obj.changes.action == "update" %}
+        {% blocktranslate trimmed with event_name=obj.event.name %}
+            A new {{ event_name }} schedule has been released!
+        {% endblocktranslate %}
+    {% else %}
+        {% blocktranslate trimmed with event_name=obj.event.name %}
+            The first {{ event_name }} schedule has been released!
+        {% endblocktranslate %}
+    {% endif %}
+</p>
+
+{% include "agenda/changelog_block.html" with schedule=obj %}

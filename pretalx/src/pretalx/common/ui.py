@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: 2025-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from django.template.loader import get_template
+from django.utils.translation import gettext_lazy as _
+
+from pretalx.common.text.phrases import phrases
+
+
+class Button:
+    color = "success"
+    extra_classes = ""
+    icon = "check"
+    size = "lg"
+    label = phrases.base.save
+    _type = "submit"
+    template_name = "common/ui/button.html"
+
+    def __init__(
+        self,
+        *,
+        label="",
+        color="",
+        size="",
+        icon="",
+        extra_classes="",
+        name="",
+        value="",
+        _type="",
+        _id=None,
+    ):
+        self.label = label or self.label
+        self.name = name
+        self.value = value
+        self.color = color or self.color
+        self.size = size or self.size
+        self.icon = icon or (self.icon if icon is not None else None)
+        self.extra_classes = extra_classes
+        self.type = _type or self._type
+        self.id = _id
+        self.template_context = (
+            "label",
+            "color",
+            "size",
+            "icon",
+            "extra_classes",
+            "name",
+            "value",
+            "type",
+            "id",
+        )
+
+    def __str__(self):
+        return get_template(self.template_name).render(self.get_context())
+
+    def get_context(self):
+        return {attr: getattr(self, attr) for attr in self.template_context}
+
+
+class LinkButton(Button):
+    href = ""
+    template_name = "common/ui/linkbutton.html"
+
+    def __init__(self, *, href="", icon=None, disabled="", **kwargs):
+        self.href = href
+        # A non-empty ``disabled`` is a human-readable reason why the action
+        # is unavailable; it renders a non-clickable, explained hint.
+        self.disabled = disabled
+        super().__init__(icon=icon, **kwargs)
+        self.template_context = (
+            "label",
+            "color",
+            "size",
+            "icon",
+            "extra_classes",
+            "href",
+            "disabled",
+        )
+
+
+def delete_link(href, label=None, color=None, disabled=""):
+    return LinkButton(
+        href=href,
+        label=label or phrases.base.delete_button,
+        color=color or "outline-danger",
+        icon="trash",
+        disabled=disabled,
+    )
+
+
+def delete_button(label=None, color=None):
+    return Button(color="danger", icon="trash", label=phrases.base.delete_button)
+
+
+def back_button(href):
+    return LinkButton(
+        href=href, icon=None, label=phrases.base.back_button, color="outline-info"
+    )
+
+
+def send_button():
+    return Button(icon="envelope", label=phrases.base.send)
+
+
+def api_buttons(event):
+    return [
+        LinkButton(
+            href="https://docs.pretalx.org/api/",
+            color="info",
+            icon="book",
+            label=_("Documentation"),
+        ),
+        LinkButton(href=event.api_urls.base, label=_("Go to API")),
+    ]
+
+
+def _channel_luminance(c):
+    return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def has_good_contrast(color, threshold=4.5):
+    """
+    Calculates the colour contrast ratio to white using the WCAG formula.
+    Thresholds: 4.5 for text, 3 for large text / graphical objects.
+
+    https://www.w3.org/WAI/GL/wiki/Contrast_ratio
+    """
+    hex_color = color.lstrip("#")
+
+    try:
+        r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    except (ValueError, IndexError):
+        # Returning False on error would lead to swapped button colours,
+        # and as with an invalid colour, the default pretalx colour is used,
+        # which has good contrast to white (the default case in this project's
+        # context), we assume a good outcome on error.
+        return True
+
+    luminance = (
+        0.2126 * _channel_luminance(r)
+        + 0.7152 * _channel_luminance(g)
+        + 0.0722 * _channel_luminance(b)
+    )
+    contrast_with_white = (1 + 0.05) / (luminance + 0.05)
+    return contrast_with_white >= threshold

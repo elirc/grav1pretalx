@@ -1,0 +1,115 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: Apache-2.0
+-->
+
+{# TEMPLATE VAR SETTINGS #}
+{%- set url_root = pathto('', 1) %}
+{%- if url_root == '#' %}{% set url_root = '' %}{% endif %}
+{%- if not embedded and docstitle %}
+  {%- set titlesuffix = " &mdash; "|safe + docstitle|e %}
+{%- else %}
+  {%- set titlesuffix = "" %}
+{%- endif %}
+
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% block htmltitle %}
+  <title>{{ title|striptags|e }}{{ titlesuffix }}</title>
+  {% endblock %}
+  <link rel="shortcut icon" href="{{ pathto('_static/favicon.png', 1) }}"/>
+
+  <link rel="stylesheet" href="{{ pathto('_static/pretalx.css', 1) }}" type="text/css" />
+  {% for cssfile in css_files %}
+    <link rel="stylesheet" href="{{ pathto(cssfile.filename, 1) }}" type="text/css" />
+  {% endfor %}
+  {% for cssfile in extra_css_files %}
+    <link rel="stylesheet" href="{{ pathto(cssfile.filename, 1) }}" type="text/css" />
+  {% endfor %}
+
+  {%- block linktags %}
+    <link rel="index" title="Index" href="{{ pathto('genindex') }}"/>
+    <link rel="search" title="Search" href="{{ pathto('search') }}"/>
+  {%- endblock %}
+
+  {{ metatags }}
+
+  {%- block extrahead %} {% endblock %}
+
+</head>
+
+<body role="document">
+
+  {% block extrabody %} {% endblock %}
+
+  <header>
+    <a id="logourl" href="/" class="mobile-hide">
+      <img src="/_static/logo_white.svg" />
+    </a>
+
+    <div role="search" id="header-search">
+      <form id="rtd-search-form" action="{{ pathto('search') }}" method="get">
+        <input type="text" name="q" placeholder="Search docs" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+
+    <div id="related" class="mobile-hide">
+      <a href="https://pretalx.com/p/about/">Website</a>
+      <a href="https://pretalx.com/p/try/">Try pretalx</a>
+    </div>
+  </header>
+
+    {# SIDE NAV, TOGGLES ON MOBILE #}
+    <nav data-toggle="nav-shift" class="nav-side">
+      <div class="nav-scroll">
+
+        <div class="nav-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          {% block menu %}
+            {% set global_toc = toctree(maxdepth=theme_navigation_depth|int, collapse=theme_collapse_navigation, includehidden=True) %}
+            {% if global_toc %}
+            <div id="toctree">
+              {{ global_toc }}
+            </div>
+            {% else %}
+              <div id="toctree" class="local-toc">{{ toc }}</div>
+            {% endif %}
+          {% endblock %}
+        </div>
+      </div>
+    </nav>
+
+    <main data-toggle="nav-shift">
+
+      {# MOBILE NAV, HANDLES SIDE NAV ON TOGGLE #}
+      <nav class="nav-top" role="navigation" aria-label="top navigation">
+        {% block mobile_nav %}
+          <i data-toggle="nav-top" class="fa fa-bars"></i>
+          <a href="{{ pathto(master_doc) }}">{{ project }}</a>
+        {% endblock %}
+      </nav>
+
+      {# PAGE CONTENT #}
+      <div class="nav-content">
+        <div class="rst-content">
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            {% block body %}{% endblock %}
+           </div>
+          </div>
+          {% include "footer.html" %}
+        </div>
+      </div>
+    </main>
+
+  {%- for scriptfile in script_files %}
+    <script type="text/javascript" src="{{ pathto(scriptfile.filename|default(scriptfile), 1) }}"></script>
+  {%- endfor %}
+
+  {%- block footer %} {% endblock %}
+
+</body>
+</html>

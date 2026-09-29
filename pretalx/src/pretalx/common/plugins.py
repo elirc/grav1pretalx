@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2018-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+
+from itertools import groupby
+
+from django.apps import apps
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
+
+# This is also the order in which the categories are displayed.
+CATEGORY_LABELS = {
+    "FEATURE": pgettext_lazy("Type of plugin", "Features"),
+    "INTEGRATION": pgettext_lazy("Type of plugin", "Integrations"),
+    "CUSTOMIZATION": pgettext_lazy("Type of plugin", "Customisations"),
+    "EXPORTER": _("Exporters"),
+    "RECORDING": _("Recording integrations"),
+    "LANGUAGE": _("Languages"),
+    "OTHER": pgettext_lazy("category of items", "Other"),
+}
+
+
+def get_all_plugins(event=None):
+    """Return the PretalxPluginMeta classes of all plugins found in the
+    installed Django apps, sorted by highlight status and name. If an
+    event is provided, only plugins available for that event are returned.
+
+    Each plugin meta class will have a `highlighted` attribute set based on
+    the HIGHLIGHTED_PLUGINS setting."""
+    plugins = []
+    highlighted_plugins = settings.HIGHLIGHTED_PLUGINS
+    for app in apps.get_app_configs():
+        if getattr(app, "PretalxPluginMeta", None):
+            meta = app.PretalxPluginMeta
+            meta.module = app.name
+            meta.app = app
+            meta.highlighted = meta.module in highlighted_plugins
+
+            if event and hasattr(app, "is_available") and not app.is_available(event):
+                continue
+
+            plugins.append(meta)
+    return sorted(plugins, key=plugin_sort_key)
+
+
+def plugin_group_key(plugin):
+    return getattr(plugin, "category", "OTHER")
+
+
+def plugin_sort_key(plugin):
+    return (
+        0 if plugin.highlighted else 1,
+        str(plugin.name).lower().replace("pretalx ", ""),
+    )
+
+
+def get_all_plugins_grouped(event=None, filter_visible=True):
+    """Return a dict of all plugins found in the installed Django apps,
+    grouped by category. If an event is provided, only plugins active for
+    that event are returned.
+    The key is a tuple of the category name and the human-readable label."""
+    plugins = get_all_plugins(event)
+    if filter_visible:
+        plugins = [
+            plugin
+            for plugin in plugins
+            if not plugin.name.startswith(".") and getattr(plugin, "visible", True)
+        ]
+    plugins_grouped = groupby(sorted(plugins, key=plugin_group_key), plugin_group_key)
+    # Only keep categories with at least one plugin and sort the plugins by name.
+    plugins_grouped = {
+        category: sorted(plugins, key=plugin_sort_key)
+        for category, plugins in plugins_grouped
+        if plugins
+    }
+
+    # Now replace the category keys with the translated labels and sort the
+    # categories by the order defined in CATEGORY_ORDER.
+    return {
+        (category, category_label): plugins_grouped[category]
+        for category, category_label in CATEGORY_LABELS.items()
+        if category in plugins_grouped
+    }

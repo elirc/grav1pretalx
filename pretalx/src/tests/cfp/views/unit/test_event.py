@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026-present Tobias Kunze
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+from django.http import QueryDict
+from django.urls import reverse
+
+from pretalx.cfp.views.event import (
+    EventCfP,
+    EventStartpage,
+    GeneralView,
+    LoggedInEventPageMixin,
+)
+from pretalx.event.models import Event
+from tests.factories import EventFactory, SubmissionFactory, SubmitterAccessCodeFactory
+from tests.utils import make_request, make_view
+
+pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+
+
+def test_logged_in_event_page_mixin_get_login_url(event):
+    request = make_request(event)
+    view = make_view(LoggedInEventPageMixin, request)
+
+    expected = reverse("cfp:event.login", kwargs={"event": event.slug})
+    assert view.get_login_url() == expected
+
+
+def test_event_startpage_has_featured_true_when_featured_exists(event):
+    SubmissionFactory(event=event, is_featured=True)
+    request = make_request(event)
+    view = make_view(EventStartpage, request)
+
+    assert view.has_featured() is True
+
+
+def test_event_startpage_has_featured_false_when_none(event):
+    request = make_request(event)
+    view = make_view(EventStartpage, request)
+
+    assert view.has_featured() is False
+
+
+@pytest.mark.parametrize(
+    ("query_params", "expected_qs"),
+    (
+        ({}, ""),
+        ({"track": "main"}, "?track=main"),
+        ({"submission_type": "talk"}, "?submission_type=talk"),
+        ({"access_code": "abc123"}, "?access_code=abc123"),
+        (
+            {"track": "main", "submission_type": "talk"},
+            "?track=main&submission_type=talk",
+        ),
+        ({"unrelated": "param"}, ""),
+    ),
+)
+def test_event_startpage_submit_qs(event, query_params, expected_qs):
+    """submit_qs forwards only track, submission_type, and access_code query params."""
+    request = make_request(event)
+    qd = QueryDict(mutable=True)
+    for k, v in query_params.items():
+        qd[k] = v
+    request.GET = qd
+    view = make_view(EventStartpage, request)
+
+    result = view.submit_qs()
+    if expected_qs:
+        assert parse_qs(urlparse("http://x" + result).query) == parse_qs(
+            urlparse("http://x" + expected_qs).query
+        )
+    else:
+        assert result == ""
+
+
+def test_event_startpage_access_code_returns_code_when_valid(event):
+    access_code = SubmitterAccessCodeFactory(event=event)
+
+    request = make_request(event)
+    qd = QueryDict(mutable=True)
+    qd["access_code"] = access_code.code
+    request.GET = qd
+    view = make_view(EventStartpage, request)
+
+    assert view.access_code() == access_code
+
+
+def test_event_startpage_access_code_returns_none_when_invalid(event):
+    request = make_request(event)
+    qd = QueryDict(mutable=True)
+    qd["access_code"] = "nonexistentcode"
+    request.GET = qd
+    view = make_view(EventStartpage, request)
+
+    assert view.access_code() is None
+
+
+def test_event_startpage_access_code_returns_none_when_no_param(event):
+    request = make_request(event)
+    view = make_view(EventStartpage, request)
+
+    assert view.access_code() is None
+
+
+def test_event_cfp_has_featured_true(event):
+    SubmissionFactory(event=event, is_featured=True)
+    request = make_request(event)
+    view = make_view(EventCfP, request)
+
+    assert view.has_featured() is True
+
+
+def test_event_cfp_has_featured_false(event):
+    request = make_request(event)
+    view = make_view(EventCfP, request)
+
+    assert view.has_featured() is False
+
+
+def test_general_view_custom_domain_filters_events(event):
+    """On a custom domain, the view reuses the queryset the middleware
+    stashed on the request."""
+    custom_event = EventFactory(
+        is_public=True, custom_domain="https://custom.example.com"
+    )
+    EventFactory(is_public=True, custom_domain=None)
+    request = make_request(event)
+    request.uses_custom_domain = True
+    request.host = "custom.example.com"
+    request.custom_domain_events = Event.objects.filter(pk=custom_event.pk)
+    view = make_view(GeneralView, request)
+
+    context = view.get_context_data()
+
+    all_events = (
+        context["current_events"] + context["past_events"] + context["future_events"]
+    )
+    assert all_events == [custom_event]

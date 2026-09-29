@@ -1,0 +1,39 @@
+<!--
+SPDX-FileCopyrightText: 2020-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% load i18n %}
+{% load rich_text %}
+{% load safelink %}
+
+{% if answer.question.variant == "file" %}
+    <i class="fa fa-file-o"></i>
+    {% if answer.answer_file %}
+        <a href="{{ answer.answer_file.url }}">{{ answer.answer_file }}</a>
+    {% else %}
+        {% translate "No file provided" %}
+    {% endif %}
+{% elif answer.question.variant == "boolean" %}
+    {% if answer.boolean_answer is True %}
+        <i class="fa fa-check-circle text-success"></i>
+    {% elif answer.boolean_answer is False %}
+        <i class="fa fa-times-circle text-danger"></i>
+    {% else %}
+        &mdash;
+    {% endif %}
+{% elif answer.question.variant == "choices" or answer.question.variant == "multiple_choice" %}
+    {% for option in answer.options.all %}{{ option.answer }}{% if not forloop.last %}, {% endif %}{% empty %}&mdash;{% endfor %}
+{% elif answer.question.variant == "url" %}
+    <a href="{% safelink answer.answer %}">
+        {% if answer.question.show_icon and answer.question.icon_url %}
+            <img src="{{ answer.question.icon_url }}" alt="{{ answer.question.question }}" width="16" height="16">
+        {% else %}
+            {{ answer.question.question }}
+        {% endif %}
+    </a>
+{% elif answer and answer.answer %}
+    {{ answer.answer|rich_text }}
+{% else %}
+    {% translate "No response" %}
+{% endif %}

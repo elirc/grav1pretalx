@@ -1,0 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2018-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "orga/base.html" %}
+
+{% load i18n %}
+
+{% block extra_title %}{% translate "Organiser" %} :: {{ request.organiser.name }} :: {% endblock extra_title %}
+
+{% block content %}
+    <h2>{% translate "Settings" %}</h2>
+    {% include "orga/includes/base_form.html" %}
+{% endblock content %}

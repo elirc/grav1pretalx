@@ -1,0 +1,27 @@
+<!--
+SPDX-FileCopyrightText: 2017-present Tobias Kunze
+SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Pretalx-AGPL-3.0-Terms
+-->
+
+{% extends "agenda/base.html" %}
+
+{% load i18n %}
+
+{% block agenda_content %}
+    <article>
+        <h3>{% translate "Schedule changes" %}</h3>
+        {% for schedule in schedules %}
+            <section>
+                <h4 id="{{ schedule.version }}">
+                    <a href="{% url "agenda:versioned-schedule" event=request.event.slug version=schedule.version %}">
+                        {{ phrases.schedule.version }} {{ schedule.version }}
+                        <small class="text-muted">{{ schedule.published|date }}</small>
+                    </a>
+                </h4>
+
+                {% include "agenda/changelog_block.html" with schedule=schedule %}
+
+            </section>
+        {% endfor %}
+    </article>
+{% endblock agenda_content %}

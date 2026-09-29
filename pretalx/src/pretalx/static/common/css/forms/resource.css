@@ -1,0 +1,49 @@
+/*
+ * SPDX-FileCopyrightText: 2024-present Tobias Kunze
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.resource-option-row {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+
+  .resource-option-delete {
+    float: right;
+    flex-grow: 0;
+  }
+
+  .resource-option-public {
+    .form-group-inline {
+      flex-direction: row;
+    }
+  }
+
+  .form-group {
+    display: flex;
+    margin-bottom: 0;
+    margin-top: 0;
+
+    .bootstrap-multi-input {
+      flex-grow: 1;
+    }
+    label {
+      padding-right: 8px;
+    }
+    label .optional {
+      display: none;
+    }
+
+    input:not([type="checkbox"]):not([type="radio"]) {
+      height: 2rem;
+    }
+    input[type="file"] + small {
+      display: none;
+    }
+  }
+}
+.resource-card {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1rem;
+}

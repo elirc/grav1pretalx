@@ -1,0 +1,160 @@
+.. SPDX-FileCopyrightText: 2017-present Tobias Kunze
+.. SPDX-License-Identifier: CC-BY-SA-4.0
+
+.. highlight:: console
+
+.. _`devsetup`:
+
+Development Setup
+=================
+
+To contribute to pretalx, it’s useful to run pretalx locally on your device so you can test your
+changes. First of all, you need install some packages on your operating system:
+
+.. note::
+
+   If you want to install pretalx on a server for actual usage, go to the
+   :ref:`administrator-index` instead.
+
+External dependencies
+---------------------
+
+Please make sure you have Python (and, in Debian-like systems, ``python3-dev``) and ``git``
+installed. Additionally, please install `uv`_ and `just`_.
+
+Some Python dependencies might also need a compiler during installation, the Debian package
+``build-essential`` or something similar should suffice, as well as ``gettext`` for translations.
+
+Installing pretalx
+------------------
+
+First, clone our git repository::
+
+    $ git clone https://github.com/pretalx/pretalx.git
+    $ cd pretalx/
+
+If you do not want to use a specific database or existing data, and just want to
+hit the ground running, run this command::
+
+    $ just dev-setup
+
+This will install all required Python dependencies, create a database, prompt
+you to create a user account and finally create a test event for you, and start
+the development server.
+
+If you want to understand the details, or if you want to modify some settings,
+please continue with the following section:
+
+Step-by-step setup
+------------------
+
+If you want to make modifications to the default ``dev-setup`` process, first up,
+install all the main application dependencies::
+
+    $ just install --extra dev
+
+You can also run ``just install-all`` to include dependencies for
+PostgreSQL, Redis, and for building the documentation.
+
+Next, you will have to copy the static files from the source folder to the
+STATIC_ROOT directory, and create the local database::
+
+    $ just run collectstatic --noinput
+    $ just run migrate
+
+To be able to log in, you should also create an admin user, organiser and team by running::
+
+    $ just run init
+
+Additionally, if you want to get started with an event right away, run the ``create_test_event`` command::
+
+    $ just run create_test_event
+
+This command will create a test event for you, with a set of test submissions,
+and speakers, and the like.  With the ``--stage`` flag, you can determine which
+stage the event in question should be in. The available choices are ``cfp``
+(CfP still open, plenty of submissions, but no reviews), ``review``
+(submissions have been reviewed and accepted/rejected), ``schedule`` (there is
+a schedule and the event is currently running), and ``over``. ``schedule`` is
+the default value.
+
+If you want to see pretalx in a different language than English, you have to compile our language
+files::
+
+    $ just run compilemessages
+
+If you need to test more complicated features, you should probably look into the
+:doc:`setup</administrator/installation>` documentation to find the bits and pieces you
+want to add to your development setup.
+
+The development server
+----------------------
+
+To run the local development server, execute::
+
+    $ just run
+
+Now point your browser to http://127.0.0.1:8000/orga/ – You should be able to log in and
+see a fully functioning pretalx system.
+
+For information on code checks, unit tests, and style guidelines, see the
+:doc:`conventions` documentation.
+
+Working with mails
+------------------
+
+When running in development mode, Pretalx uses Django’s console email backend.
+This means the development server will print any emails to its stdout, instead
+of sending them via SMTP.
+
+If you want to test sending event emails via a custom SMTP server, we recommend
+starting Python’s debugging SMTP server in a separate shell::
+
+    uv run python -m smtpd -n -c DebuggingServer localhost:1025
+
+You can use this server by specifying host ``localhost`` and port ``1025`` in
+the event email settings.
+
+.. _`developer-translations`:
+
+Working with translations
+-------------------------
+
+If you want to translate new strings that are not yet known to the translation system, you will
+first include them in the ``.po`` files. As we share translations between both the JavaScript
+frontend and the Python backend, you'll need to install the frontend dependencies first::
+
+    $ just install-npm
+
+Then, use the following command to scan the source code for strings we want to
+translate and update the ``*.po`` files accordingly::
+
+    $ just makemessages
+
+To actually see pretalx in your language, you have to compile the ``*.po`` files to their optimised
+binary ``*.mo`` counterparts::
+
+    $ just run compilemessages
+
+pretalx by default supports events in English, German, or French, or all three. To translate
+pretalx to a new language, add the language code and natural name to the ``LANGUAGES`` variable in
+the ``settings.py``. Depending on the completeness of your changes, and your commitment to maintain
+them in the future, we can talk about merging them into core.
+
+
+.. _`working-with-documentation`:
+
+Working with documentation
+--------------------------
+
+Build and preview the documentation running the following command::
+
+    $ just serve-docs
+
+Then, go to http://localhost:8001 for a version of the documentation that
+automatically re-builds when you save a changed source file.
+Please note that changes in the static files (stylesheets and JavaScript) will only be reflected
+after a restart.
+
+.. _uv: https://docs.astral.sh/uv/getting-started/installation/
+.. _just: https://github.com/casey/just
